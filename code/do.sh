@@ -1,0 +1,1 @@
+/mnt/c/Users/admin/Desktop/FastXC_ultra/code/bin/xc_fast -A /mnt/c/Users/admin/Desktop/FastXC_ultra/code/output_test/xc_list/array1/2018.001.0000.speclist -B /mnt/c/Users/admin/Desktop/FastXC_ultra/code/output_test/xc_list/array1/2018.001.0000.speclist -O /mnt/c/Users/admin/Desktop/FastXC_ultra/code/output_test/ncf -C 500 -D -1/50000 -Z -1/360 -S NONE -T 10 -M 1 -G 0 -U 2 -Q 0
