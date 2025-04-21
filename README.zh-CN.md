@@ -1,23 +1,22 @@
 <p align="center">
   <a href="https://github.com/your-org/FastXC/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/your-org/FastXC/ci.yml?branch=main&label=CI&logo=github" alt="CI Status">
+    <img src="https://img.shields.io/github/actions/workflow/status/wangkingh/FastXC_ultra/ci.yml?branch=main&label=CI&logo=github" alt="CI Status">
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/your-org/FastXC?color=blue&logo=open-source-initiative" alt="MIT License">
+    <img src="https://img.shields.io/github/license/wangkingh/FastXC_ultra?color=blue&logo=open-source-initiative" alt="MIT License">
   </a>
   <a href="https://github.com/your-org/FastXC/stargazers">
-    <img src="https://img.shields.io/github/stars/your-org/FastXC?style=social" alt="GitHub stars">
+    <img src="https://img.shields.io/github/stars/wangkingh/FastXC_ultra?style=social" alt="GitHub stars">
   </a>
   <a href="https://github.com/your-org/FastXC/issues">
-    <img src="https://img.shields.io/github/issues/your-org/FastXC?logo=github" alt="Open issues">
+    <img src="https://img.shields.io/github/issues/wangkingh/FastXC_ultra?logo=github" alt="Open issues">
   </a>
   <a href="https://github.com/your-org/FastXC/pulls">
-    <img src="https://img.shields.io/github/issues-pr/your-org/FastXC?logo=github" alt="Open pull requests">
+    <img src="https://img.shields.io/github/issues-pr/wangkingh/FastXC_ultra?logo=github" alt="Open pull requests">
   </a>
-  <img src="https://img.shields.io/github/last-commit/your-org/FastXC?logo=git" alt="last commit">
+  <img src="https://img.shields.io/github/last-commit/wangkingh/FastXC_ultra?logo=git" alt="last commit">
   <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA >=11.8">
 </p>
-
 
 * 切换语言 / Switch language: [English](README.md)
 
