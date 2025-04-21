@@ -1,156 +1,186 @@
-# FastXC 📈🌍 — GPU‑accelerated seismic cross‑correlation toolkit
-[![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)](https://github.com/your-org/FastXC/actions)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
-[![CUDA ≥ 11.8](https://img.shields.io/badge/CUDA-11.8%2B-green?style=flat-square)](https://developer.nvidia.com/cuda-toolkit)
+<p align="center">
+  <a href="https://github.com/your-org/FastXC/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/your-org/FastXC/ci.yml?branch=main&label=CI&logo=github" alt="CI Status">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/your-org/FastXC?color=blue&logo=open-source-initiative" alt="MIT License">
+  </a>
+  <a href="https://github.com/your-org/FastXC/stargazers">
+    <img src="https://img.shields.io/github/stars/your-org/FastXC?style=social" alt="GitHub stars">
+  </a>
+  <a href="https://github.com/your-org/FastXC/issues">
+    <img src="https://img.shields.io/github/issues/your-org/FastXC?logo=github" alt="Open issues">
+  </a>
+  <a href="https://github.com/your-org/FastXC/pulls">
+    <img src="https://img.shields.io/github/issues-pr/your-org/FastXC?logo=github" alt="Open pull requests">
+  </a>
+  <img src="https://img.shields.io/github/last-commit/your-org/FastXC?logo=git" alt="last commit">
+  <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA >=11.8">
+</p>
 
-FastXC combines **CUDA C kernels** with a **Python orchestration layer** to give you an
-end‑to‑end, GPU‑powered workflow for:
 
-1. **SAC → spectrum conversion**  
-2. **Cross‑correlation (XC) & NCF production**  
-3. **Phase‑weighted & TF‑PWS stacking**  
-4. **Horizontal ↔ Radial rotation**  
-5. **House‑keeping utilities** (segment extraction, SAC↔DAT, etc.)
-
-All steps are configurable through a single `.ini` file and can be chained in one‑shot
-with the `FastXCPipeline`.
-
-> **TL;DR:** Install → prepare `config.ini` →  
-> `python -m fastxc config.ini --steps='{"CrossCorrelation": "ALL"}'`
+* Switch language / 切换语言: [简体中文](README.zh-CN.md)
 
 ---
 
-## ⏳ Quick start
+# FastXC
+**High‑performance CPU‑GPU pipeline for ambient‑noise cross‑correlation (1‑ & 9‑component)**
 
+FastXC orchestrates **CUDA‑C kernels** with a **Python controller** to turn raw SAC waveforms
+into stacked Noise Correlation Functions — in minutes, not hours.
+
+> **Heads‑up**: current *PWS* & *tf‑PWS* kernels require GPUs with **≥ 20 GB VRAM**.  
+> Smaller cards can still run linear stacking or shorter windows.
+
+---
+
+## 🚩 Key features
+| Category | Highlights |
+|----------|------------|
+| **Speed** | CUDA‑accelerated kernels for `sac2spec_ultra`, `xc_fast`, `RotateNCF` |
+| **Flexibility** | Single‑array **or** dual‑array XC, single‑component **or** 3×3=9‑component workflows |
+| **Stacking** | Linear, **PWS**, **tf‑PWS** with GPU acceleration |
+| **Automation** | One‑file config (`.ini`) + `FastXCPipeline` with per‑step modes (`SKIP`, `CMD_ONLY`, …) |
+| **Clean I/O** | Regex‑based SAC search, auto file‑lists, optional concatenation & DAT output |
+
+---
+
+## 🌱 Quick install
 ```bash
-# (1) clone & build CUDA executables
-git clone https://github.com/your-org/FastXC.git
-cd FastXC/cuda_c_src && make -j && cd ..
+git clone https://github.com/your-org/FastXC
+cd FastXC
 
-# (2) create a virtualenv
+# 1. build CUDA/C executables
+cd cuda_c_src && make -j && cd ..
+
+# 2. Python env
 python -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -e .        # installs fastxc package + CLI
 
-# (3) copy & edit template config
-python -m fastxc --generate-template   # produces template_config.ini.copy
-vim template_config.ini.copy           # adjust paths / parameters
+# 3. config
+python -m fastxc --generate-template
+vim template_config.ini.copy   # edit absolute paths
 
-# (4) run the full pipeline
+# 4. run full pipeline
 python -m fastxc template_config.ini.copy
+```
+
+### Build tips
+*Different GPU?* — edit `cuda_c_src/Makefile`  
+```
+export ARCH=sm_89   # e.g. RTX 4090 → CC 8.9
+```
+Check with:
+```bash
+utils/check_gpu/compile.sh && utils/check_gpu/check_gpu
 ```
 
 ---
 
-## 🛠 Directory layout (hover to expand)
-
+## 🏗 Directory snapshot
 <details>
-<summary><strong>Click to see</strong></summary>
+<summary>Click to expand</summary>
 
 ```text
-cuda_c_src/          # CUDA kernels (sac2spec, xc, rotate …) + Makefiles
-fastxc/              # Python orchestrator
-  ├── cmd_generator/ # create *.cmds.txt
-  ├── cmd_deployer/  # dispatch cmds to GPUs / CPUs
-  ├── list_generator/# build file‑lists fed to CUDA tools
-  └── utils/         # helpers: config parser, design_filter, ...
-utils/               # misc C helpers (check_gpu, extractSegments, …)
-run.py               # minimal entry script example
+cuda_c_src/          CUDA kernels + Makefiles
+fastxc/              Python orchestrator
+  ├─ cmd_generator/  build *.cmds.txt
+  ├─ cmd_deployer/   dispatch commands
+  ├─ list_generator/ build file‑lists
+  └─ utils/          config parser, filter design, …
+config/              example *.ini
+run.py               minimal launcher
 ```
 </details>
 
 ---
 
-## 📜 Configuration
+## ⚙️ Pipeline & modes
+FastXC runs eight ordered steps:
 
-Everything lives in one INI.  
-The **bare minimum** you must tweak is:
+| # | Step | Purpose | CLI enum default |
+|---|------|---------|------------------|
+| 1 | GenerateFilter     | FIR/IIR design (`filter.txt`)          | `ALL` |
+| 2 | OrganizeSAC        | Group SAC files by station/time        | `ALL` |
+| 3 | Sac2Spec           | GPU FFT → `segspec/` spectra           | `ALL` |
+| 4 | CrossCorrelation   | GPU XC → `ncf/`                        | `ALL` |
+| 5 | ConcatenateNcf     | Merge daily NCFs                       | `ALL` |
+| 6 | Stack              | Linear / PWS / tf‑PWS                  | `ALL` |
+| 7 | Rotate             | ZNE ↔ RT / HR                          | `ALL` |
+| 8 | Sac2Dat            | Optional SAC → DAT conversion          | `SKIP` |
 
-```ini
-[array_info1]
-sac_dir   = /path/to/SAC
-component_list = BHZ
-
-[parameters]
-output_dir = /path/to/out
-delta      = 0.05
-bands      = 0.1/0.5 0.5/1
-
-[executables]
-sac2spec = /abs/path/to/bin/sac2spec_ultra
-xc       = /abs/path/to/bin/xc_fast
-```
-
-Need inspiration? Run:
-
-```bash
-python -m fastxc --generate-template
-```
-
----
-
-## 🚦 Pipeline steps & modes
-
-<div style="overflow-x: auto">
-
-| Step (ordered)          | Purpose                                 | Default mode | Typical tweaks |
-|-------------------------|-----------------------------------------|-------------|----------------|
-| `GenerateFilter`        | FIR/IIR design → `filter.txt`           | `ALL`       | Skip if you already have filters |
-| `OrganizeSAC`           | Scan SAC tree, group by station/time    | `ALL`       | `PREPARE_ONLY` for dry runs |
-| `Sac2Spec`              | FFT on GPU, produce `segspec/*.spec`    | `ALL`       | Often `SKIP` for pre‑computed spectra |
-| `CrossCorrelation`      | GPU XC → `ncf/*.SAC`                    | `ALL`       | `CMD_ONLY` to inspect cmds |
-| `ConcatenateNcf`        | Merge day‑wise NCFs                     | `ALL`       |                |
-| `Stack`                 | linear / PWS / TF‑PWS stack             | `ALL`       | Turn off in `AGGREGATE` write‑mode |
-| `Rotate`                | Z‑N‑E → R‑T or pairwise H‑R rotation    | `ALL`       | Needs 3‑comp data |
-| `Sac2Dat`               | Convert SAC → DAT for AxiSEM, etc.      | `SKIP`      |                |
-
-</div>
-
-Use `StepMode` to fine‑grain execution:
+Use `StepMode` for overrides:
 
 ```python
-from fastxc import StepMode
-
-steps = {
-    "OrganizeSAC":   StepMode.PREPARE_ONLY,
+from fastxc import StepMode, FastXCPipeline
+pipe = FastXCPipeline("my.ini")
+pipe.run({{
     "CrossCorrelation": StepMode.CMD_ONLY,
-    "Rotate":        StepMode.SKIP,
-}
-pipeline.run(steps)
+    "Rotate": StepMode.SKIP,
+}})
 ```
 
 ---
 
-## 🌊 ASCII seismogram (why not?)
+## 📝 Config cheat‑sheet
+```ini
+[array_info1]
+sac_dir = /data/array1
+pattern = {{home}}/{{YYYY}}/{{station}}.{{component}}.{{suffix}}
+component_list = E,N,Z
+time_start = 2019-01-01 00:00:00
+time_end   = 2019-12-31 23:59:59
 
-```text
-                         .  .                   .    .
-                    .  .   .  .   .  .  .   .   .  .
-_______________.___.___.___.___.___.___.___.___.___.__________________
+[array_info2]
+sac_dir = NONE
+component_list = Z
+
+[parameters]
+output_dir = /data/out
+delta      = 0.05
+bands      = 0.1/0.5 0.5/1
+max_lag    = 600
+win_len    = 3600
+shift_len  = 3600
+stack_flag = 110
+
+[executables]
+sac2spec = ./bin/sac2spec_ultra
+xc       = ./bin/xc_fast
+stack    = ./bin/ncf_pws
+rotate   = ./bin/RotateNCF
+
+[device_info]
+gpu_list    = 0,1
+gpu_task_num= 1,1
+gpu_mem_info= 40,40
+cpu_count   = 32
+```
+Run `python -m fastxc --generate-template` for a full commented template.
+
+---
+
+## 🖥 Environment check
+```bash
+nvidia-smi
+nvcc --version
 ```
 
 ---
 
-## 💡 Pro tips
-
-* **Scrollable tables / code**  
-  Wrap them in `<div style="overflow-x:auto">…</div>` as shown above.
-* **GPU sanity‑check**  
-  `utils/check_gpu/check_gpu` prints compute‑capability & mem before the heavy jobs.
-* **Dry‑run mode**  
-  Set `dry_run = True` in `[advanced_debug]` to echo commands without executing.
-* **Live log**  
-  `log_file_path = fastxc_$(date +%F_%T).log` keeps every step’s output.
+## ℹ️ FAQ
+<details><summary>Why no tf‑PWS in MULTI mode?</summary>
+Early design assumed the GPU memory trade‑off; support is planned.
+</details>
 
 ---
 
-## 🖊 Citation
-
-If you use *FastXC* in your research, please cite:
-
-> Your Name et al. (2025). **FastXC: A GPU‑accelerated seismic cross‑correlation pipeline**. _Seismological Software Notes_, v1.0. https://doi.org/xx.xxxx/xxxx
+## 📜 References
+* Wang et al. (2025) “High‑performance CPU‑GPU Heterogeneous Computing Method for 9‑Component Ambient Noise Cross‑Correlation.” *Earthquake Research Advances* (in press).  
+* Bensen G.D. et al. (2007) *GJI* 169(3): 1239‑1260.  
+* Cupillard P. et al. (2011) *GJI* 184(3): 1397‑1414.  
+* Zhang Y. et al. (2018) *JGR* 123(9): 8016‑8031.
 
 ---
 
-## 📄 License
-
-[MIT](LICENSE) © 2023‑2025 Your Name & Contributors
+© 2023‑2025 Your Name & Contributors — Licensed under MIT
