@@ -1,12 +1,21 @@
 <p align="center">
-  <!-- 项目主要语言，自动统计 -->
-  <img src="https://img.shields.io/github/languages/top/your-org/FastXC?logo=python" alt="Top language">
-
-  <!-- Python 版本需求 -->
-  <img src="https://img.shields.io/badge/Python-3.8%2B-blue?logo=python" alt="Python ≥ 3.8">
-
-  <!-- CUDA 版本需求 -->
-  <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA ≥ 11.8">
+  <a href="https://github.com/your-org/FastXC/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/wangkingh/FastXC_ultra/ci.yml?branch=main&label=CI&logo=github" alt="CI Status">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/wangkingh/FastXC_ultra?color=blue&logo=open-source-initiative" alt="MIT License">
+  </a>
+  <a href="https://github.com/your-org/FastXC/stargazers">
+    <img src="https://img.shields.io/github/stars/wangkingh/FastXC_ultra?style=social" alt="GitHub stars">
+  </a>
+  <a href="https://github.com/your-org/FastXC/issues">
+    <img src="https://img.shields.io/github/issues/wangkingh/FastXC_ultra?logo=github" alt="Open issues">
+  </a>
+  <a href="https://github.com/your-org/FastXC/pulls">
+    <img src="https://img.shields.io/github/issues-pr/wangkingh/FastXC_ultra?logo=github" alt="Open pull requests">
+  </a>
+  <img src="https://img.shields.io/github/last-commit/wangkingh/FastXC_ultra?logo=git" alt="last commit">
+  <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA >=11.8">
 </p>
 
 
