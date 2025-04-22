@@ -118,7 +118,7 @@ void usage(void)
         "                       0  none\n"
         "                       1  before time-domain normalisation\n"
         "                       2  after  time-domain normalisation\n"
-        "                       3  both before and after normalisation\n":
+        "                       3  both before and after normalisation\n"
         "  -N INT             Time-domain normalisation type (default: 0)\n"
         "                       0  none\n"
         "                       1  run-abs\n"
