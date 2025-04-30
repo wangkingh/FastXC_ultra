@@ -83,6 +83,15 @@ def gen_seis_file_group(
 
     seis_array.filter(criteria, threads=cpu_count, verbose=True)
     group_labels = ["station", "time"]
+    
+    # —— 动态决定 group 维度 ——
+    group_labels = ["station", "time"]
+    if "{network}" in pattern.lower():
+        group_labels.append("network")          # 新增 network
+        logger.info('Pattern contains "{network}", grouping by station-time-network.')
+    else:
+        logger.info('Pattern has no "{network}", grouping by station-time.')
+        
     sorted_labels = ["component"]
     seis_array.group(labels=group_labels, sort_labels=sorted_labels, filtered=True)
     stas = seis_array.get_stations(filtered=True)

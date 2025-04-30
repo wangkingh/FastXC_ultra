@@ -50,6 +50,7 @@ def build_sac_spec_pair(
     paths: List[str],
     spec_dir: str,
     array_id: str,
+    network: str = "VV",            # <── 新增
 ) -> Dict[str, List[str]]:
     """
     given station, time, components, paths, spec_dir, array_id, return a dict containing sac and spec paths
@@ -59,7 +60,7 @@ def build_sac_spec_pair(
     spec_paths = []
 
     for component, sac_path in zip(components, paths):
-        spec_name = f"{station}.{time_str}.{component}.segspec"
+        spec_name = f"{network}.{station}.{time_str}.{component}.segspec"
         array_flag = f"array{array_id}"
         full_spec_path = os.path.join(spec_dir, array_flag, time_str, spec_name)
 
@@ -74,6 +75,7 @@ def build_sac_spec_pairs_for_group(
     spec_dir: str,
     array_id: str,
     component_flag: int,
+    placeholder_net: str = "VV",
 ) -> List[Dict[str, List[str]]]:
     """
     for each group, build sac_spec_pairs
@@ -82,7 +84,17 @@ def build_sac_spec_pairs_for_group(
     if not seis_file_group:
         return results
 
-    for (station, time), file_info_dict in seis_file_group.items():
+    # ------- 判断 key 形状 --------
+    sample_key = next(iter(seis_file_group))
+    has_network = len(sample_key) == 3
+    
+    for key, file_info_dict in seis_file_group.items():
+        if has_network:
+            station, time, network = key      # 解包 3 元
+        else:
+            station, time = key               # 解包 2 元
+            network = placeholder_net         # 填占位
+            
         components = file_info_dict["component"]
         paths = file_info_dict["path"]
         if len(components) != component_flag:
@@ -99,6 +111,7 @@ def build_sac_spec_pairs_for_group(
             paths=paths,
             spec_dir=spec_dir,
             array_id=array_id,
+            network=network, 
         )
         results.append(sac_spec_pair)
 

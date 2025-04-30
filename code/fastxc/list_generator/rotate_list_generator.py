@@ -1,6 +1,7 @@
 from typing import List
 import logging
 import os
+import re
 from itertools import product
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def _gen_rotate_list(
         for component_pair in product(component_list_1, component_list_2):
             component1, component2 = component_pair
             component_info = f"{mapping[component1]}-{mapping[component2]}"
-            fname = f"{sta_pair}.{component1}-{component2}.ncf.sac"
+            fname = f"{sta_pair}.{component1}-{component2}.{label}.sac"
             file_path = os.path.join(sta_pair_path, fname)
             enz_group.update({component_info: file_path})
 
@@ -82,7 +83,6 @@ def gen_rotate_list(
     """
     # get all stack directories for ENZ
     enz_dirs = prepare_enz_dirs(stack_flag, output_dir)
-
     if not enz_dirs:
         logger.warning("No ENZ directories found for generating rotate lists.")
         return False

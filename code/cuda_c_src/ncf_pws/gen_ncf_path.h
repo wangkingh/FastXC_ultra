@@ -14,6 +14,11 @@
 
 void CreateDir(char *sPathName);
 
-void SplitFileName(const char *fname, const char *delimiter, char *sta_pair_str, char *cmp_pair_str, char *suffix);
+void SplitFileName(const char *fname,
+                   const char *delimiter,
+                   char *net_pair_str,
+                   char *sta_pair_str,
+                   char *cmp_pair_str,
+                   char *suffix);
 
 #endif

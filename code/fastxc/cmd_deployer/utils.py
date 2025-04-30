@@ -30,7 +30,5 @@ def check_and_log_file_count(
 
     while not stop_event.is_set():
         file_count = sum(len(files) for _, _, files in os.walk(base_dir))
-        dep_logger.info(
-            f"Current number of spectrums written out: " f"{file_count}/{total_tasks}"
-        )
+        dep_logger.info(f"spectrums written out: " f"{file_count}/{total_tasks}")
         time.sleep(interval)

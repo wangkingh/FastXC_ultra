@@ -66,18 +66,22 @@ def gen_xc_list(segspec_dir: str, xc_list_dir: str, num_thread: int):
     message = f"Generating SEGSPEC Lists For Cross-Correlation\n"
     logger.info(message)
 
+    extra_field = {
+        "arrayID":  r"[A-Za-z0-9]+",
+    }
+    
     #  initialize SeisArray
     segspec_dir = os.path.abspath(segspec_dir)
     seis_array = SeisArray(
         array_dir=segspec_dir,
-        pattern="{home}/{network}/{*}/{station}.{YYYY}.{JJJ}.{HH}{MI}.{component}.{suffix}",
-        custom_fields=None,
+        pattern="{home}/{arrayID}/{*}/{network}.{station}.{YYYY}.{JJJ}.{HH}{MI}.{component}.{suffix}",
+        custom_fields=extra_field,
     )
     # match files
     seis_array.match(threads=num_thread)
 
     # 5) write out spec_list based on dual_flag
-    seis_array.group(labels=["network", "time"], filtered=False)
+    seis_array.group(labels=["arrayID", "time"], filtered=False)
     _write_speclist(seis_array.files_group, xc_list_dir)
 
     logger.debug(f"xc_list dir generated at {xc_list_dir}\n")

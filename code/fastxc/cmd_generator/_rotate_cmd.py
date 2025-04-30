@@ -36,7 +36,7 @@ def gen_rotate_cmd(rotate_cmd: str, output_dir: str) -> bool:
             label_cmds.append(cmd)
 
         # 5. write the command list to a file
-        cmd_file = os.path.join(cmd_list_dir, "rotate_cmds_{label}.txt")
+        cmd_file = os.path.join(cmd_list_dir, f"rotate_cmds_{label}.txt")
         with open(cmd_file, "w") as f:
             f.write("\n".join(label_cmds))
 

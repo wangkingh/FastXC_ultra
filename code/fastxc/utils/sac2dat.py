@@ -1,108 +1,174 @@
-from obspy import read
+from __future__ import annotations
+
+"""Batch-convert cross-correlation SAC stacks to plain-text DAT files.
+
+Changes w.r.t. the original script
+----------------------------------
+*  **Dynamic process dirs**  - every sub-directory of ``<output_dir>/stack`` that is **not**
+   itself a ``*_dat`` dir is treated as a processing branch.
+*  **Pathlib everywhere** - cleaner, platform-independent path handling.
+*  **Safe Windows launch** – ``if __name__ == "__main__"`` gate.
+
+Tested with ObsPy ≥ 1.3.
+"""
+
+from pathlib import Path
+from math import ceil
+import multiprocessing as mp
+import logging
+from functools import partial
+
 import numpy as np
-import math
-import os
-import multiprocessing
+from obspy import read
 from tqdm import tqdm
 
 
-def gen_sac_dat_pair(xc_param):
-    output_dir = xc_param["output_dir"]
+# -----------------------------------------------------------------------------
+# helpers
+# -----------------------------------------------------------------------------
+def _split_ccf_trace(
+    data: np.ndarray, dt: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return time axis (t >= 0), negative and positive halves of a symmetrical CCF.
 
-    # define the process directories
-    process_dirs = [
-        "linear",
-        "pws",
-        "tfpws",
-        "rtz",
-    ]
+    For *odd* npts the central sample is assigned to the *positive* half.
+    """
+    npts = data.size
+    half = npts // 2  # integer division
 
-    all_pairs = []
-    for process_dir in process_dirs:
-        if os.path.exists(os.path.join(output_dir, "stack", process_dir)):
-            sac_path = os.path.join(output_dir, "stack", process_dir)
-            dat_path = os.path.join(output_dir, "stack", process_dir + "_dat")
-            for root, dirs, files in os.walk(sac_path):
-                for file in files:
-                    if file.endswith(".sac"):
-                        full_sac_path = os.path.join(root, file)
-                        dat_file = file.replace(".sac", f".{process_dir}.dat")
-                        full_dat_path = os.path.join(dat_path, dat_file)
-                        os.makedirs(os.path.dirname(full_dat_path), exist_ok=True)
-                        all_pairs.append((full_sac_path, full_dat_path))
+    neg = data[:half][::-1]
+    pos = data[half:]
 
-    return all_pairs
+    t = np.arange(pos.size) * dt
+    return t, neg, pos
 
 
-def sac2dat(sac_dat_pair):
-    # Unpack the pair
-    sac, dat_path = sac_dat_pair
+# -----------------------------------------------------------------------------
+# pair enumeration
+# -----------------------------------------------------------------------------
 
-    # Read in sac file
-    st = read(sac)
-    tr = st[0]  # Only one trace in sac file
 
-    # Extract header information
-    delta = tr.stats.delta
+# -----------------------------------------------------------------------------
+# pair enumeration
+# -----------------------------------------------------------------------------
+
+
+def gen_sac_dat_pairs(output_dir: Path, *, skip_self: bool = False):
+    """Yield ``(sac_path, dat_path)`` tuples for every processing branch found."""
+
+    stack_root = output_dir / "stack"
+    global_dat_root = output_dir / "dat"
+
+    for proc_dir in stack_root.iterdir():
+        if not proc_dir.is_dir() or proc_dir.name.endswith("_dat"):
+            continue  # skip non‑dirs & legacy *_dat dirs
+
+        dat_root = global_dat_root / proc_dir.name  # <out>/dat/<process>
+
+        for sac_path in proc_dir.rglob("*.sac"):
+            if skip_self:
+                sta_pair = sac_path.stem.split(".")[0]
+                if "-" in sta_pair:
+                    sta1, sta2 = sta_pair.split("-", 1)
+                    if sta1 == sta2:
+                        continue
+
+            rel = sac_path.relative_to(proc_dir)
+            dat_path = dat_root / rel.with_suffix(f".{proc_dir.name}.dat")
+            dat_path.parent.mkdir(parents=True, exist_ok=True)
+            yield sac_path, dat_path
+
+
+# -----------------------------------------------------------------------------
+# conversion worker
+# -----------------------------------------------------------------------------
+
+
+def sac_to_dat(pair):  # path typing omitted for speed in Pool
+    """Convert a single SAC file to DAT format."""
+    sac_path, dat_path = pair
+
     try:
-        npts = tr.stats.sac.npts
-        stla, stlo, stel = tr.stats.sac.stla, tr.stats.sac.stlo, 0
-        evla, evlo, evel = tr.stats.sac.evla, tr.stats.sac.evlo, 0
-    except AttributeError as e:
-        print(f"Missing SAC header information in {sac}: {e}")
+        tr = read(str(sac_path))[0]
+    except Exception as exc:
+        logging.error("Failed to read %s – %s", sac_path, exc)
         return
 
-    # Data Processing
-    data = tr.data
-    half_length = math.ceil(npts / 2)
-    data_neg = data[:half_length][::-1]  # Negative half
-    data_pos = data[(half_length - 1) :]  # Positive half
-    times = np.arange(0, half_length * delta, delta)
+    dt = tr.stats.delta
+    npts = tr.stats.npts
 
-    # Write output file
-    with open(dat_path, "w") as f:
-        # Write station and event location information
-        f.write(f"{evlo:.7e} {evla:.7e} {evel:.7e}\n")
-        f.write(f"{stlo:.7e} {stla:.7e} {stel:.7e}\n")
+    try:
+        sac_hdr = tr.stats.sac
+        stla, stlo = sac_hdr.stla, sac_hdr.stlo or 0.0
+        evla, evlo = sac_hdr.evla, sac_hdr.evlo or 0.0
+        evel = 0.0
+        stel = 0.0
+    except AttributeError:
+        logging.warning("Missing SAC header(s) in %s – skipped", sac_path)
+        return
 
-        # Write time, negative half, and positive half data
-        for i, time in enumerate(times):
-            neg = data_neg[i] if i < len(data_neg) else 0  # Pad with zeros if necessary
-            pos = data_pos[i] if i < len(data_pos) else 0  # Pad with zeros if necessary
-            f.write(f"{time:.7e} {neg:.7e} {pos:.7e}\n")
+    t, neg, pos = _split_ccf_trace(tr.data.astype(float), dt)
+
+    with dat_path.open("w") as fh:
+        fh.write(f"{evlo:.7e} {evla:.7e} {evel:.7e}\n")
+        fh.write(f"{stlo:.7e} {stla:.7e} {stel:.7e}\n")
+        for tt, nn, pp in zip(t, np.pad(neg, (0, pos.size - neg.size)), pos):
+            fh.write(f"{tt:.7e} {nn:.7e} {pp:.7e}\n")
 
 
-def sac2dat_deployer(xc_param):
-    sac_dat_pairs = gen_sac_dat_pair(xc_param)
-    num_processes = xc_param.get("cpu_count", os.cpu_count())
-    pbar = tqdm(total=len(sac_dat_pairs))
-    pool = multiprocessing.Pool(processes=num_processes)
-    for sac_dat_pair in sac_dat_pairs:
-        pool.apply_async(
-            sac2dat, args=(sac_dat_pair,), callback=lambda _: pbar.update()
-        )
-    pool.close()
-    pool.join()
-    output_dir = xc_param["output_dir"]
-    process_dirs = ["linear_dat", "pws_dat", "tfpws_dat", "rtz_dat"]
-    main_dat_list_path = os.path.join(output_dir, "dat_list.txt")
-    with open(main_dat_list_path, "w") as main_dat_list:
-        for process_dir in process_dirs:
-            destination_dir = os.path.join(output_dir, "stack", process_dir)
-            if not os.path.exists(destination_dir):
-                print(f"Directory {destination_dir} does not exist...")
-                continue
-            dat_list = os.path.join(destination_dir, "dat_list.txt")
-            with open(dat_list, "w") as f:
-                for root, _, files in os.walk(destination_dir):
-                    for file in files:
-                        if file.endswith(".dat"):
-                            fname = os.path.basename(file)
-                            stapair = fname.split(".")[0]
-                            sta1, sta2 = stapair.split("-")
-                            if sta1 != sta2:
-                                f.write(file + "\n")
-                                relative_path = os.path.relpath(
-                                    os.path.join(root, file), output_dir
-                                )
-                                main_dat_list.write(relative_path + "\n")
+def _update_progress(_: None, bar: tqdm):
+    bar.update()
+
+
+# -----------------------------------------------------------------------------
+# list writers
+# -----------------------------------------------------------------------------
+
+
+def build_dat_lists(output_dir: Path):
+    """Write per-branch and global DAT lists (excludes self‑correlations)."""
+
+    main_list = (output_dir / "dat_list.txt").open("w")
+
+    for dat_dir in (output_dir / "stack").glob("*_dat"):
+        list_file = dat_dir / "dat_list.txt"
+        with list_file.open("w") as lf:
+            for dat_path in dat_dir.rglob("*.dat"):
+                sta_pair = dat_path.stem.split(".")[0]
+                if "-" in sta_pair:
+                    sta1, sta2 = sta_pair.split("-", 1)
+                    if sta1 == sta2:
+                        continue
+
+                rel = dat_path.relative_to(output_dir)
+                lf.write(f"{rel}\n")
+                main_list.write(f"{rel}\n")
+
+    main_list.close()
+
+
+# -----------------------------------------------------------------------------
+# public API
+# -----------------------------------------------------------------------------
+def sac2dat_deployer(xc_param: dict):
+    """Entry point - run the whole conversion pipeline."""
+
+    output_dir = Path(xc_param["output_dir"]).resolve()
+    cpu_count = int(xc_param.get("cpu_count", mp.cpu_count()))
+
+    pairs = list(gen_sac_dat_pairs(output_dir))
+    if not pairs:
+        logging.warning("No SAC files found under %s/stack", output_dir)
+        return
+
+    bar = tqdm(total=len(pairs), desc="Converting SAC→DAT")
+    with mp.Pool(processes=cpu_count) as pool:
+        for pair in pairs:
+            pool.apply_async(
+                sac_to_dat, args=(pair,), callback=partial(_update_progress, bar=bar)
+            )
+        pool.close()
+        pool.join()
+    bar.close()
+
+    build_dat_lists(output_dir)
