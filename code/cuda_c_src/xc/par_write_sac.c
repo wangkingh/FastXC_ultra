@@ -95,7 +95,17 @@ static void *write_file(void *arg)
 
         // 4.5 生成输出文件路径
         char ncf_path[MAXPATH];
-        GenCCFPath(ncf_path, src_path, sta_path, output_dir, queue_id);
+        int ret = GenCCFPath(ncf_path,           /* 输出缓冲区           */
+                             sizeof(ncf_path),   /* 缓冲区大小 (size_t) */
+                             src_path, sta_path, /* 源/目标 SAC 路径    */
+                             output_dir,         /* 输出根目录          */
+                             queue_id);          /* 队列号              */
+
+        if (ret != 0)
+        {
+            fprintf(stderr, "GenCCFPath failed: %s\n", strerror(-ret));
+            /* 按需要退出或处理 */
+        }
 
         // 4.6 构造 SAC header (你可用 SacheadProcess 或自己写)
         SacheadProcess(&ncf_hd, stla, stlo, evla, evlo,

@@ -1,103 +1,78 @@
 #include "gen_ccfpath.h"
 
-// Recursively creates directories
-void CreateDir(char *sPathName)
+int mkdir_p(const char *path, mode_t mode)
 {
-    char DirName[512];
-    strcpy(DirName, sPathName);
-    int i, len = strlen(DirName);
-    for (i = 1; i < len; i++)
+    if (!path || *path == '\0')
     {
-        if (DirName[i] == '/')
+        errno = EINVAL;
+        return -1;
+    }
+
+    /* ---------- 1. 复制路径到可写缓冲 ---------- */
+    char tmp[PATH_MAX];
+    size_t len = strnlen(path, PATH_MAX);
+    if (len >= PATH_MAX)
+    {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    memcpy(tmp, path, len + 1); /* 连同 '\0' */
+
+    /* ---------- 2. 逐级 mkdir ---------- */
+    for (char *p = tmp + 1; *p; ++p)
+    {
+        if (*p == '/')
         {
-            DirName[i] = '\0';
-            if (access(DirName, 0) != 0)
-            {
-                if (mkdir(DirName, 0755) == -1)
-                {
-                    // Check again if the directory exists after the error
-                    if (access(DirName, 0) != 0)
-                    {
-                        printf("[INFO] Error creating %s. Permission denied\n", DirName);
-                    }
-                }
-            }
-            DirName[i] = '/';
+            *p = '\0';
+            if (mkdir(tmp, mode) == -1 && errno != EEXIST)
+                return -1; /* 真失败 */
+            *p = '/';
         }
     }
-    if (len > 0 && access(DirName, 0) != 0)
-    {
-        if (mkdir(DirName, 0755) == -1)
-        {
-            // Check again if the directory exists after the error
-            if (access(DirName, 0) != 0)
-            {
-                printf("[INFO] Error creating %s. Permission denied\n", DirName);
-            }
-        }
-    }
+    /* ---------- 3. mkdir 最终目录 ---------- */
+    if (mkdir(tmp, mode) == -1 && errno != EEXIST)
+        return -1;
+
+    return 0;
 }
 
-/* Split the file name */
-void SplitFileName(const char *fname, const char *delimiter, char *stastr,
-                   char *yearstr, char *jdaystr, char *hmstr, char *chnstr)
+/* Split the file name — portable, no strlcpy dependency */
+int SplitFileName(const char *fname, const char *delimiter,
+                  char *net, size_t net_sz,
+                  char *sta, size_t sta_sz,
+                  char *year, size_t year_sz,
+                  char *jday, size_t jday_sz,
+                  char *hm, size_t hm_sz,
+                  char *chn, size_t chn_sz)
 {
-    if (!fname || !delimiter || !stastr || !yearstr || !jdaystr || !hmstr || !chnstr)
+    if (!fname || !delimiter || !net || !sta || !year ||
+        !jday || !hm || !chn)
+        return -1; /* 参数空 */
+
+    char *copy = my_strdup(fname);
+    if (!copy)
+        return -2; /* 内存不足 */
+
+    char *save = NULL;
+    const size_t cap[6] = {net_sz, sta_sz, year_sz,
+                           jday_sz, hm_sz, chn_sz};
+    char *out[6] = {net, sta, year, jday, hm, chn};
+
+    for (int i = 0; i < 6; ++i)
     {
-        return; // check parameters
+        const char *tok = strtok_r(i == 0 ? copy : NULL, delimiter, &save);
+        if (!tok)
+        { /* 缺字段 */
+            free(copy);
+            return -(10 + i);
+        }
+        /* snprintf：若截断，目标串已 NUL 终结；上层可以按需要再检查 */
+        snprintf(out[i], cap[i], "%s", tok);
     }
 
-    char *fname_copy = my_strdup(fname); // in oder not to change the original fname
-    char *saveptr;
-
-    char *result = strtok_r(fname_copy, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(stastr, result);
-    }
-    else
-    {
-        goto cleanup;
-    }
-
-    result = strtok_r(NULL, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(yearstr, result);
-    }
-    else
-    {
-        goto cleanup;
-    }
-
-    result = strtok_r(NULL, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(jdaystr, result);
-    }
-    else
-    {
-        goto cleanup;
-    }
-
-    result = strtok_r(NULL, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(hmstr, result);
-    }
-    else
-    {
-        goto cleanup;
-    }
-
-    result = strtok_r(NULL, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(chnstr, result);
-    }
-
-cleanup:
-    free(fname_copy); // FREE MEMORY
+    free(copy);
+    return 0;
 }
 
 void SacheadProcess(SACHEAD *ncfhd,
@@ -144,34 +119,82 @@ void SacheadProcess(SACHEAD *ncfhd,
     /* END OF MAKE COMMON HEADER INFO */
 }
 
-/* Generate the output XC(Cross-Correlation) path*/
-void GenCCFPath(char *ccf_path, char *src_path, char *sta_path, char *output_dir, size_t queue_id)
+/* 把 path 的文件名拷到 dst，保证 NUL 结尾；超长即 ENAMETOOLONG */
+static int copy_basename(char *dst, size_t dst_sz, const char *path)
 {
-    // Extract file names from source and station paths
-    char src_file_name[MAXNAME];
-    char sta_file_name[MAXNAME];
+    if (!dst || !path)
+        return EINVAL;
 
-    char src_station[16], src_channel[16];
-    char sta_station[16], sta_channel[16];
+    char tmp[PATH_MAX];
+    if (snprintf(tmp, sizeof(tmp), "%s", path) >= (int)sizeof(tmp))
+        return ENAMETOOLONG;
 
-    char src_year[5], src_jday[4], src_hm[5];
-    char sta_year[5], sta_jday[4], sta_hm[5];
+    const char *base = basename(tmp); /* libc 可能返回 "."，但此处已知是文件 */
+    if (snprintf(dst, dst_sz, "%s", base) >= (int)dst_sz)
+        return ENAMETOOLONG;
 
-    strncpy(src_file_name, basename(src_path), MAXNAME);
-    strncpy(sta_file_name, basename(sta_path), MAXNAME);
+    return 0;
+}
 
-    // Split file names into individual components
-    SplitFileName(src_file_name, ".", src_station, src_year, src_jday, src_hm, src_channel);
-    SplitFileName(sta_file_name, ".", sta_station, sta_year, sta_jday, sta_hm, sta_channel);
-    char ccf_dir[MAXLINE];
+int GenCCFPath(char *ccf_path, size_t ccf_sz,
+               const char *src_path, const char *sta_path,
+               const char *output_dir, size_t queue_id)
+{
+    if (!ccf_path || !src_path || !sta_path || !output_dir)
+        return -EINVAL;
+
+    /* ---------- 1. 提取文件名 ---------- */
+    char src_file[MAXNAME], sta_file[MAXNAME];
+    int rc;
+
+    rc = copy_basename(src_file, sizeof(src_file), src_path);
+    if (rc)
+        return -rc;
+    rc = copy_basename(sta_file, sizeof(sta_file), sta_path);
+    if (rc)
+        return -rc;
+
+    /* ---------- 2. 拆字段 ---------- */
+    char src_net[FIELD_LEN], src_sta[FIELD_LEN], src_chn[FIELD_LEN];
+    char sta_net[FIELD_LEN], sta_sta[FIELD_LEN], sta_chn[FIELD_LEN];
+    char src_year[YEAR_LEN], src_jd[JDAY_LEN], src_hm[HM_LEN];
+    char sta_year[YEAR_LEN], sta_jd[JDAY_LEN], sta_hm[HM_LEN];
+
+    if (SplitFileName(src_file, ".", /* 安全版 SplitFileName */
+                      src_net, sizeof(src_net),
+                      src_sta, sizeof(src_sta),
+                      src_year, sizeof(src_year),
+                      src_jd, sizeof(src_jd),
+                      src_hm, sizeof(src_hm),
+                      src_chn, sizeof(src_chn)) != 0)
+        return -EINVAL; /* 源文件名格式错误 */
+
+    if (SplitFileName(sta_file, ".",
+                      sta_net, sizeof(sta_net),
+                      sta_sta, sizeof(sta_sta),
+                      sta_year, sizeof(sta_year),
+                      sta_jd, sizeof(sta_jd),
+                      sta_hm, sizeof(sta_hm),
+                      sta_chn, sizeof(sta_chn)) != 0)
+        return -EINVAL; /* 目标文件名格式错误 */
+
+    /* ---------- 3. 生成目录 ---------- */
+    char ccf_dir[PATH_MAX];
+    if (snprintf(ccf_dir, sizeof(ccf_dir), "%s/queue_%zu", output_dir, queue_id) >= (int)sizeof(ccf_dir))
+        return -ENAMETOOLONG; /* 路径被截断 */
+
+    if (mkdir_p(ccf_dir, 0755) != 0) /* 改用无 TOCTOU 版本 */
+        return -errno;               /* 让上层决定打印还是重试 */
+
+    /* ---------- 4. 生成文件名 ---------- */
     char ccf_name[MAXNAME];
+    if (snprintf(ccf_name, sizeof(ccf_name), "%s-%s.%s-%s.%s-%s.bigsac",
+                 src_net, sta_net, src_sta, sta_sta, src_chn, sta_chn) >= (int)sizeof(ccf_name))
+        return -ENAMETOOLONG;
 
-    // Generate output directory and CCF path
-    snprintf(ccf_dir, sizeof(ccf_dir), "%s/queue_%li", output_dir, queue_id);
+    /* ---------- 5. 拼完整路径 ---------- */
+    if (snprintf(ccf_path, ccf_sz, "%s/%s", ccf_dir, ccf_name) >= (int)ccf_sz)
+        return -ENAMETOOLONG;
 
-    // Generate new CCF file name based on time cross flag
-    snprintf(ccf_name, MAXLINE, "%s-%s.%s-%s.bigsac", src_station, sta_station, src_channel, sta_channel);
-
-    CreateDir(ccf_dir);
-    snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
+    return 0;
 }

@@ -31,6 +31,7 @@ int main(int argc, char **argv)
 
     // 分配写出文件名字符串的空间
     char src_file_name[MAXNAME];
+    char net_pair[64];
     char sta_pair[64];
     char cmp_pair[64];
     char ccf_name[MAXNAME];
@@ -98,18 +99,18 @@ int main(int argc, char **argv)
     ncf_hd.nzyear = 2010;
     ncf_hd.nzjday = 214;
     ncf_hd.nzhour = 0;
-    ncf_hd.nzmin = 0 ;
+    ncf_hd.nzmin = 0;
     ncf_hd.nzmsec = 0;
 
     // 获取文件名信息
     strncpy(src_file_name, basename(big_sac), MAXNAME);
-    SplitFileName(src_file_name, ".", sta_pair, cmp_pair, suffix);
+    SplitFileName(src_file_name, ".", net_pair, sta_pair, cmp_pair, suffix);
 
     // =================== 写 出 线 性 叠 加 数 据======================
     if (save_linear == 1)
     {
-        snprintf(ccf_dir, sizeof(ccf_dir), "%s/linear/%s/", stack_dir, sta_pair);
-        snprintf(ccf_name, MAXLINE, "%s.%s.linear.sac", sta_pair, cmp_pair);
+        snprintf(ccf_dir, sizeof(ccf_dir), "%s/linear/%s.%s/", stack_dir, net_pair, sta_pair);
+        snprintf(ccf_name, MAXLINE, "%s.%s.%s.linear.sac", net_pair, sta_pair, cmp_pair);
         CreateDir(ccf_dir);
         snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
         write_sac(ccf_path, ncf_hd, h_linear_stack); // 使用新的文件名写文件
@@ -193,8 +194,8 @@ int main(int argc, char **argv)
 
         float *pw_stack = (float *)malloc(nsamples * sizeof(float)); // 相位加权叠加结果
         CUDACHECK(cudaMemcpy(pw_stack, d_pw_stack, nsamples * sizeof(float), cudaMemcpyDeviceToHost));
-        snprintf(ccf_name, MAXLINE, "%s.%s.pws.sac", sta_pair, cmp_pair);
-        snprintf(ccf_dir, sizeof(ccf_dir), "%s/pws/%s/", stack_dir, sta_pair);
+        snprintf(ccf_name, MAXLINE, "%s.%s.%s.pws.sac", net_pair, sta_pair, cmp_pair);
+        snprintf(ccf_dir, sizeof(ccf_dir), "%s/pws/%s.%s/", stack_dir, net_pair, sta_pair);
         snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
         CreateDir(ccf_dir);
         write_sac(ccf_path, ncf_hd, pw_stack);
@@ -379,8 +380,8 @@ int main(int argc, char **argv)
         float *tfpw_stack = (float *)malloc(nsamples * sizeof(float));
         CUDACHECK(cudaMemcpy(tfpw_stack, d_tfpw_stack,
                              nsamples * sizeof(float), cudaMemcpyDeviceToHost));
-        snprintf(ccf_name, MAXLINE, "%s.%s.tfpws.sac", sta_pair, cmp_pair);
-        snprintf(ccf_dir, sizeof(ccf_dir), "%s/tfpws/%s/", stack_dir, sta_pair);
+        snprintf(ccf_name, MAXLINE, "%s.%s.%s.tfpws.sac", net_pair, sta_pair, cmp_pair);
+        snprintf(ccf_dir, sizeof(ccf_dir), "%s/tfpws/%s.%s/", stack_dir, net_pair, sta_pair);
         snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
         CreateDir(ccf_dir);
         write_sac(ccf_path, ncf_hd, tfpw_stack);

@@ -55,10 +55,16 @@ int main(int argc, char **argv)
   // 设置当前要使用的 GPU
   CUDACHECK(cudaSetDevice(gpu_id));
 
-  // 若指定了互相关输出目录，则创建
-  if (ncf_directory)
+  if (ncf_directory && *ncf_directory) /* 非空才尝试创建 */
   {
-    CreateDir(ncf_directory);
+    if (mkdir_p(ncf_directory, 0755) != 0) /* 0755 = rwxr-xr-x */
+    {
+      /* 这里决定策略：直接返回错误、抛异常、或继续但打印警告 */
+      fprintf(stderr,
+              "ERROR: cannot create NCF output directory \"%s\": %s\n",
+              ncf_directory, strerror(errno));
+      return -1; /* 或者你的错误码 */
+    }
   }
 
   // 读取源和台站的路径列表

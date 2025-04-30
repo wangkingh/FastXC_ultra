@@ -47,47 +47,45 @@ char *my_strdup(const char *s)
     return copy;
 }
 
-/* Split the file name */
-void SplitFileName(const char *fname, const char *delimiter, char *sta_pair_str, char *cmp_pair_str, char *suffix)
+void SplitFileName(const char *fname,
+                   const char *delimiter,
+                   char *net_pair_str,
+                   char *sta_pair_str,
+                   char *cmp_pair_str,
+                   char *suffix)
 {
-    if (!fname || !delimiter || !sta_pair_str || !cmp_pair_str || !suffix)
+    /* 参数检查 */
+    if (!fname || !delimiter || !net_pair_str ||
+        !sta_pair_str || !cmp_pair_str || !suffix)
     {
-        return; // check parameters
+        return;
     }
 
-    char *fname_copy = my_strdup(fname); // in oder not to change the original fname
-    char *saveptr;
+    char *fname_copy = my_strdup(fname); /* 不修改原字符串 */
+    if (!fname_copy)
+        return;
 
-    char *result = strtok_r(fname_copy, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(sta_pair_str, result);
-    }
-    else
-    {
+    char *saveptr = NULL;
+    char *token = strtok_r(fname_copy, delimiter, &saveptr); /* net_pair */
+    if (!token)
         goto cleanup;
-    }
+    strcpy(net_pair_str, token);
 
-    result = strtok_r(NULL, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(cmp_pair_str, result);
-    }
-    else
-    {
+    token = strtok_r(NULL, delimiter, &saveptr); /* sta_pair */
+    if (!token)
         goto cleanup;
-    }
+    strcpy(sta_pair_str, token);
 
-    result = strtok_r(NULL, delimiter, &saveptr);
-    if (result)
-    {
-        strcpy(suffix, result);
-    }
-    else
-    {
+    token = strtok_r(NULL, delimiter, &saveptr); /* cmp_pair */
+    if (!token)
         goto cleanup;
-    }
+    strcpy(cmp_pair_str, token);
+
+    token = strtok_r(NULL, delimiter, &saveptr); /* suffix    */
+    if (!token)
+        goto cleanup;
+    strcpy(suffix, token);
 
 cleanup:
-    free(fname_copy); // FREE MEMORY
+    free(fname_copy);
 }
