@@ -1,10 +1,11 @@
 #include "arguproc.h"
 
-/* parse command line arguments */
+/*-------------------------------------------------------------
+ * Parse command-line arguments
+ *-----------------------------------------------------------*/
 void ArgumentProcess(int argc, char **argv, ARGUTYPE *parg)
 {
-  int c;
-
+  /* ---------- defaults ---------- */
   parg->big_sac = NULL;
   parg->stack_dir = NULL;
   parg->gpu_id = 0;
@@ -12,16 +13,17 @@ void ArgumentProcess(int argc, char **argv, ARGUTYPE *parg)
   parg->save_pws = 0;
   parg->save_tfpws = 0;
   parg->gpu_task_num = 1;
+  parg->sub_stack_size = 1;   /* 1 (or 0) ⇒ feature disabled */
+  parg->src_info_file = NULL; /* 默认不做源信息过滤          */
 
-  /* check argument */
   if (argc <= 1)
   {
-    // usage();
-    exit(-1);
+    usage();
+    exit(EXIT_FAILURE);
   }
 
-  /* new stype parsing command line options */
-  while ((c = getopt(argc, argv, "I:O:G:S:U:")) != -1)
+  int c;
+  while ((c = getopt(argc, argv, "I:O:G:S:U:B:F:")) != -1)
   {
     switch (c)
     {
@@ -34,47 +36,62 @@ void ArgumentProcess(int argc, char **argv, ARGUTYPE *parg)
     case 'G':
       parg->gpu_id = atoi(optarg);
       break;
+
     case 'S':
       if (strlen(optarg) != 3 || strspn(optarg, "01") != 3)
       {
-        fprintf(stderr, "Error: Option -S requires a four-digit binary number consisting of 0s and 1s.\n");
-        exit(-1);
+        fprintf(stderr,
+                "Error: -S expects a 3-digit binary string, e.g., 110.\n");
+        exit(EXIT_FAILURE);
       }
-      parg->save_linear = (optarg[0] == '1') ? 1 : 0; // 解析第一位
-      parg->save_pws = (optarg[1] == '1') ? 1 : 0;    // 解析第二位
-      parg->save_tfpws = (optarg[2] == '1') ? 1 : 0;  // 解析第三位
+      parg->save_linear = (optarg[0] == '1');
+      parg->save_pws = (optarg[1] == '1');
+      parg->save_tfpws = (optarg[2] == '1');
       break;
-    case 'U': // 新增的解析
+
+    case 'U':
       parg->gpu_task_num = atoi(optarg);
       if (parg->gpu_task_num < 1)
       {
-        fprintf(stderr, "Error: -N must be >= 1.\n");
-        exit(-1);
+        fprintf(stderr, "Error: -U must be ≥ 1.\n");
+        exit(EXIT_FAILURE);
       }
       break;
-    case '?':
+
+    case 'B': /* sub-stack size */
+      parg->sub_stack_size = atoi(optarg);
+      if (parg->sub_stack_size < 2)
+        parg->sub_stack_size = 1; /* keep “disabled” state as 1 */
+      break;
+
+    case 'F': /* source-info file */
+      parg->src_info_file = optarg;
+      break;
+
     default:
       fprintf(stderr, "Unknown option %c\n", optopt);
-      exit(-1);
+      usage();
+      exit(EXIT_FAILURE);
     }
   }
-
-  /* end of parsing command line arguments */
 }
 
-void usage()
+/* 打印用法 */
+void usage(void)
 {
-  fprintf(
-      stderr,
-      "\nUsage:\n"
-      "specxc_mg -I bigsac -O output_dir -G gpu_id -S save_option\n"
-      "Options:\n"
-      "    -I the Big SAC File computed from Cross-Correlation\n"
-      "    -O Specify the output directory for NCF files as sac format\n"
-      "    -G ID of Gpu device to be launched \n"
-      "    -S Save options: 3 digits binary number, 1 for save, 0 for not save for [linear,pws,tfpws]\n"
-      "    -U <int>     Number of tasks to run concurrently on the GPU.\n"
-      "Version:\n"
-      "  last update by wangjx@20250403\n"
-      "  cuda version\n");
+  fprintf(stderr,
+          "\nUsage:\n"
+          "  ncf_pws -I <big_sac> -O <out_dir> [options]\n\n"
+          "Required arguments:\n"
+          "  -I <file>   Big SAC file containing multiple traces\n"
+          "  -O <dir>    Output directory for stack results\n\n"
+          "Optional arguments:\n"
+          "  -G <int>    GPU device ID to use (default: 0)\n"
+          "  -S <bin>    Three-digit binary flags to save outputs [linear, pws, tfpws]\n"
+          "              e.g. 111 = save all, 100 = save linear only (default: 100)\n"
+          "  -U <int>    Number of concurrent GPU tasks (default: 1)\n"
+          "  -B <int>    Sub-stack size: pre-stack every <int> traces before PWS/TF-PWS\n"
+          "  -F <file>   Source-info file; only traces listed here will be stacked (optional)\n\n"
+          "              Set 1 to disable this feature (default: disabled)\n\n"
+          "Version: 2025-05-02\n");
 }

@@ -1,87 +1,84 @@
-# Purpose: Generating the xc_list dir for spec cross-correlation
-from fastxc.SeisHandler import SeisArray
-from datetime import datetime
-import os
-from tqdm import tqdm
+# list_generator/xc_list_generator.py
+from __future__ import annotations
+
 import logging
+from pathlib import Path
+from typing import Dict, List, Tuple
 
-logger = logging.getLogger(__name__)
+from fastxc.SeisHandler import SeisArray
+from pandas import Timestamp
+from tqdm import tqdm  # 仍在其它地方用到，可保留
+
+log = logging.getLogger(__name__)
 
 
-def _write_speclist(files_group: dict, xc_list_dir: str):
+# ────────────────────────────────────────── #
+#  写单个 <YYYY.jjj.HHMM>.speclist          #
+# ────────────────────────────────────────── #
+def _write_speclist(
+    files_group: Dict[Tuple[str, Timestamp], Dict[str, List[str]]],
+    xc_list_dir: Path,
+) -> None:
     """
-    files_group looks like:
-    {
-        (network_val, time_obj): {
-            "station": [...],
-            "year": [...],
-            "jday": [...],
-            "hour": [...],
-            "minute": [...],
-            "component": [...],
-            "suffix": [...],
-            "path": [file1, file2, ...]
-        },
-        ...
-    }
+    Parameters
+    ----------
+    files_group : {(arrayID, Timestamp): {"path": [...], ...}, ...}
+        来自 ``SeisArray.group(labels=["arrayID","time"])`` 的结果。
+    xc_list_dir : Path
+        输出根目录，最终文件位于::
 
-    This function writes a .speclist file for each (network_val, time_obj) key in files_group.
-    Each .speclist contains the file paths from the 'path' list, one path per line.
-    The output files are stored in:
-        xc_list_dir/<network_val>/<YYYY.jjj.HHMM>.speclist
-    Where:
-        - <network_val> is the network (array) name
-        - <YYYY.jjj.HHMM> is year + Julian day + hour-minute
+            xc_list_dir/<arrayID>/<YYYY.jjj.HHMM>.speclist
     """
+    for (array_id, time_obj), info in files_group.items():
+        paths = sorted(info["path"])
+        time_str = time_obj.strftime("%Y.%j.%H%M")
 
-    # print("files_group:", files_group)  # 可视化检查字典结构，必要时可移除
+        target_dir  = xc_list_dir / array_id
+        target_file = target_dir / f"{time_str}.speclist"
+        target_dir.mkdir(parents=True, exist_ok=True)
 
-    for (network_val, time_obj), info_dict in files_group.items():
-        paths = info_dict["path"]
-        paths = sorted(paths)
-
-        # 将 time_obj 转为字符串(YYYY.jjj.HHMM)，或直接转为 str(time_obj)
-        time_info = time_obj.strftime("%Y.%j.%H%M")
-
-        # 构造输出文件名和路径
-        target_name = f"{time_info}.speclist"
-        target_dir = os.path.join(xc_list_dir, network_val)
-        os.makedirs(target_dir, exist_ok=True)
-
-        target_xc_list_path = os.path.join(target_dir, target_name)
-
-        # 写入 speclist 文件
         try:
-            with open(target_xc_list_path, "w") as f:
-                for p in paths:
-                    f.write(p + "\n")
-        except Exception as e:
-            logger.error(f"Error writing file '{target_xc_list_path}': {str(e)}")
+            with target_file.open("w") as fp:
+                fp.write("\n".join(paths) + "\n")
+        except OSError as e:
+            log.error("Write <%s> failed: %s", target_file, e)
 
 
-def gen_xc_list(segspec_dir: str, xc_list_dir: str, num_thread: int):
+# ────────────────────────────────────────── #
+#  公用入口                                  #
+# ────────────────────────────────────────── #
+def gen_xc_list(
+    segspec_dir: str | Path,
+    xc_list_dir: str | Path,
+    num_thread: int = 4,
+) -> None:
     """
-    use SeisArray to generate xc_list dir for cross-correlation
-    """
-    message = f"Generating SEGSPEC Lists For Cross-Correlation\n"
-    logger.info(message)
+    读取 ``segspec_dir`` 下的谱文件，生成交叉相关用的 ``*.speclist`` 路径集合。
 
-    extra_field = {
-        "arrayID":  r"[A-Za-z0-9]+",
-    }
-    
-    #  initialize SeisArray
-    segspec_dir = os.path.abspath(segspec_dir)
-    seis_array = SeisArray(
-        array_dir=segspec_dir,
-        pattern="{home}/{arrayID}/{*}/{network}.{station}.{YYYY}.{JJJ}.{HH}{MI}.{component}.{suffix}",
-        custom_fields=extra_field,
+    Notes
+    -----
+    * 调用方保证 `fastxc.SeisHandler.SeisArray` 可用。
+    * 输出目录若存在将追加/覆盖同名文件。
+    """
+    segspec_dir = Path(segspec_dir).expanduser().resolve()
+    xc_list_dir = Path(xc_list_dir).expanduser().resolve()
+    xc_list_dir.mkdir(parents=True, exist_ok=True)
+
+    log.info("Generating SEGSPEC lists for cross-correlation …")
+
+    # ------ 1. 组装 SeisArray ----------------------------------- #
+    extra_field = {"arrayID": r"[A-Za-z0-9]+"}
+    seis = SeisArray(
+        array_dir   = segspec_dir,
+        pattern     = "{home}/{arrayID}/{*}/{network}.{station}.{YYYY}.{JJJ}.{HH}{MI}.{component}.{suffix}",
+        custom_fields = extra_field,
     )
-    # match files
-    seis_array.match(threads=num_thread)
 
-    # 5) write out spec_list based on dual_flag
-    seis_array.group(labels=["arrayID", "time"], filtered=False)
-    _write_speclist(seis_array.files_group, xc_list_dir)
+    # ------ 2. 扫描匹配 ----------------------------------------- #
+    seis.match(threads=num_thread)
 
-    logger.debug(f"xc_list dir generated at {xc_list_dir}\n")
+    # ------ 3. 分组 & 写文件 ------------------------------------ #
+    seis.group(labels=["arrayID", "time"], filtered=False)
+    _write_speclist(seis.files_group, xc_list_dir)
+
+    log.info("xc_list generated under %s\n", xc_list_dir)

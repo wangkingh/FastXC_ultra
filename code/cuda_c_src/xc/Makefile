@@ -20,6 +20,7 @@ OBJS=arguproc.o \
 	gen_ccfpath.o \
 	par_read_spec.o \
 	par_write_sac.o \
+	par_write_step.o \
 	par_filter_nodes.o \
 	my_write_sac.o \
 	read_segspec.o \

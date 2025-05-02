@@ -29,4 +29,11 @@ __global__ void csum2DKernel(cuComplex *d_total_spectrum, int dpitch,
 __global__ void InvNormalize2DKernel(float *d_segdata, size_t pitch,
                                      size_t width, size_t height, float dt);
 
+__global__ void copyStepKernel(const cuComplex *__restrict__ src,
+                               cuComplex *__restrict__ dst,
+                               size_t node_cnt,
+                               size_t nf, /* num_frequency_points */
+                               size_t step_idx,
+                               size_t nstep);
+
 #endif

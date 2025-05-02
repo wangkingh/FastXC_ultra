@@ -27,6 +27,7 @@ extern "C"
 #include "read_spec_lst.h"
 #include "par_read_spec.h"
 #include "par_write_sac.h"
+#include "par_write_step.h"
 #include "par_filter_nodes.h"
 #include "gen_ccfpath.h"
 #include "util.h"
@@ -41,7 +42,7 @@ int main(int argc, char **argv)
   // 2. 取出结构体内的各字段
   float cc_length = cmd_args.cclength;
   char *ncf_directory = cmd_args.ncf_dir;
-  char *src_info_file = cmd_args.srcinfo_file;
+  char *srcinfo_file = cmd_args.srcinfo_file;
   float dist_min = cmd_args.distmin;
   float dist_max = cmd_args.distmax;
   float az_min = cmd_args.azmin;
@@ -50,6 +51,7 @@ int main(int argc, char **argv)
   size_t queue_id = cmd_args.queue_id; // 新增字段
   size_t gpu_task_count = cmd_args.gpu_task_num;
   size_t cpu_thread_count = cmd_args.cpu_count;
+  int save_segment = cmd_args.save_segment;
   int write_mode = cmd_args.write_mode;
 
   // 设置当前要使用的 GPU
@@ -84,15 +86,6 @@ int main(int argc, char **argv)
   int fft_size = 2 * (num_frequency_points - 1);
   int half_cc_size = (int)floorf(cc_length / sampling_interval);
   int cc_size = 2 * half_cc_size + 1;
-
-  // print the parameters get from the first source file
-  // printf("source file: %s\n", source_file_paths->paths[0]);
-  // printf("num_frequency_points: %d\n", num_frequency_points);
-  // printf("num_steps: %d\n", num_steps);
-  // printf("sampling_interval: %f\n", sampling_interval);
-  // printf("fft_size: %d\n", fft_size);
-  // printf("half_cc_size: %d\n", half_cc_size);
-  // printf("cc_size: %d\n", cc_size);
 
   // 估算主机和GPU的能力，以决定单次可以处理多少源/台
   size_t max_sta_num = EstimateGpuBatch(gpu_id, num_frequency_points, num_steps, gpu_task_count);
@@ -401,61 +394,125 @@ int main(int argc, char **argv)
                                                      node_count, vec_count);
     }
 
-    // 叠加各个 step
-    printf("node count is %ld, pair batch is %ld\n", node_count, pairs_per_batch);
-    DimCompute(&dimGrid_2D, &dimBlock_2D, num_frequency_points, node_count);
-    for (size_t step_idx = 0; step_idx < (size_t)num_steps; step_idx++)
+    if (save_segment == 0)
     {
-      csum2DKernel<<<dimGrid_2D, dimBlock_2D>>>(d_crosscor_stack,
-                                                num_frequency_points,
-                                                d_crosscor_buffer,
-                                                num_frequency_points,
-                                                num_frequency_points,
-                                                node_count,
-                                                step_idx,
-                                                num_steps);
+
+      printf("node count is %ld, pair batch is %ld\n", node_count, pairs_per_batch);
+      DimCompute(&dimGrid_2D, &dimBlock_2D, num_frequency_points, node_count);
+      for (size_t step_idx = 0; step_idx < (size_t)num_steps; step_idx++)
+      {
+        csum2DKernel<<<dimGrid_2D, dimBlock_2D>>>(d_crosscor_stack,
+                                                  num_frequency_points,
+                                                  d_crosscor_buffer,
+                                                  num_frequency_points,
+                                                  num_frequency_points,
+                                                  node_count,
+                                                  step_idx,
+                                                  num_steps);
+      }
+
+      // 相移
+      DimCompute(&dimGrid_2D, &dimBlock_2D, num_frequency_points, node_count);
+      applyPhaseShiftKernel<<<dimGrid_2D, dimBlock_2D>>>(d_crosscor_stack,
+                                                         d_sign_vector,
+                                                         num_frequency_points,
+                                                         num_frequency_points,
+                                                         node_count);
+
+      // IFFT
+      cufftExecC2R(plan, (cufftComplex *)d_crosscor_stack, (cufftReal *)d_crosscor_time);
+
+      // 归一化
+      DimCompute(&dimGrid_2D, &dimBlock_2D, fft_size, node_count);
+      InvNormalize2DKernel<<<dimGrid_2D, dimBlock_2D>>>(d_crosscor_time,
+                                                        fft_size,
+                                                        fft_size,
+                                                        node_count,
+                                                        sampling_interval);
+
+      // 拷回并写出，只截取时序中间的 cc_size
+      CUDACHECK(cudaMemcpy2D(h_crosscor_time,
+                             cc_size * sizeof(float),
+                             d_crosscor_time + (num_frequency_points - half_cc_size - 1),
+                             fft_size * sizeof(float),
+                             cc_size * sizeof(float),
+                             node_count,
+                             cudaMemcpyDeviceToHost));
+
+      // 写出互相关结果
+      write_pairs_parallel(curr_batch_mgr,
+                           source_file_paths,
+                           station_file_paths,
+                           h_crosscor_time,
+                           sampling_interval,
+                           cc_size,
+                           cc_length,
+                           ncf_directory,
+                           queue_id,
+                           write_mode,
+                           write_pool);
     }
+    else
+    {
+      /* ► 计算 launch 配置一次即可 */
+      DimCompute(&dimGrid_2D, &dimBlock_2D, num_frequency_points, node_count);
 
-    // 相移
-    DimCompute(&dimGrid_2D, &dimBlock_2D, num_frequency_points, node_count);
-    applyPhaseShiftKernel<<<dimGrid_2D, dimBlock_2D>>>(d_crosscor_stack,
-                                                       d_sign_vector,
-                                                       num_frequency_points,
-                                                       num_frequency_points,
-                                                       node_count);
+      for (size_t step_idx = 0; step_idx < (size_t)num_steps; ++step_idx)
+      {
+        /* 1. 从 d_crosscor_buffer 拷出本 step 的频谱到 d_crosscor_stack */
+        copyStepKernel<<<dimGrid_2D, dimBlock_2D>>>(
+            d_crosscor_buffer, /* src  */
+            d_crosscor_stack,  /* dst  */
+            node_count,
+            num_frequency_points,
+            step_idx,
+            num_steps);
 
-    // IFFT
-    cufftExecC2R(plan, (cufftComplex *)d_crosscor_stack, (cufftReal *)d_crosscor_time);
+        /* 2. 相移 */
+        applyPhaseShiftKernel<<<dimGrid_2D, dimBlock_2D>>>(
+            d_crosscor_stack,
+            d_sign_vector,
+            num_frequency_points,
+            num_frequency_points,
+            node_count);
 
-    // 归一化
-    DimCompute(&dimGrid_2D, &dimBlock_2D, fft_size, node_count);
-    InvNormalize2DKernel<<<dimGrid_2D, dimBlock_2D>>>(d_crosscor_time,
-                                                      fft_size,
-                                                      fft_size,
-                                                      node_count,
-                                                      sampling_interval);
+        /* 3. IFFT : d_crosscor_stack(C2R) -> d_crosscor_time */
+        cufftExecC2R(plan,
+                     (cufftComplex *)d_crosscor_stack,
+                     (cufftReal *)d_crosscor_time);
 
-    // 拷回并写出，只截取时序中间的 cc_size
-    CUDACHECK(cudaMemcpy2D(h_crosscor_time,
-                           cc_size * sizeof(float),
-                           d_crosscor_time + (num_frequency_points - half_cc_size - 1),
-                           fft_size * sizeof(float),
-                           cc_size * sizeof(float),
-                           node_count,
-                           cudaMemcpyDeviceToHost));
+        /* 4. 归一化 */
+        DimCompute(&dimGrid_2D, &dimBlock_2D, fft_size, node_count);
+        InvNormalize2DKernel<<<dimGrid_2D, dimBlock_2D>>>(
+            d_crosscor_time,
+            fft_size, fft_size,
+            node_count,
+            sampling_interval);
 
-    // 写出互相关结果
-    write_pairs_parallel(curr_batch_mgr,
-                         source_file_paths,
-                         station_file_paths,
-                         h_crosscor_time,
-                         sampling_interval,
-                         cc_size,
-                         cc_length,
-                         ncf_directory,
-                         queue_id,
-                         write_mode,
-                         write_pool);
+        /* 5. 只取中心 cc_size 栅格拷回 host */
+        CUDACHECK(cudaMemcpy2D(h_crosscor_time,
+                               cc_size * sizeof(float),
+                               d_crosscor_time + (num_frequency_points - half_cc_size - 1),
+                               fft_size * sizeof(float),
+                               cc_size * sizeof(float),
+                               node_count,
+                               cudaMemcpyDeviceToHost));
+
+        float step_len = num_frequency_points * sampling_interval;
+        write_pairs_step_parallel(curr_batch_mgr,
+                                  source_file_paths, station_file_paths,
+                                  h_crosscor_time,
+                                  sampling_interval,
+                                  cc_size,
+                                  cc_length,
+                                  step_len, /* ← new */
+                                  ncf_directory,
+                                  queue_id,
+                                  write_mode,
+                                  step_idx, /* 当前 step */
+                                  write_pool);
+      } /* for step */
+    }
   }
 
   // 销毁线程池

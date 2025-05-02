@@ -179,7 +179,7 @@ int write_multiple_sac(const char *filename, SHAREDITEM *pItem, int paircnt)
   }
 
   // 使用ftell获取文件大小
-  long filesize = ftell(fp);
+  long filesize = ftello(fp);
   if (filesize == -1)
   {
     fprintf(stderr, "Error determining file size.\n");

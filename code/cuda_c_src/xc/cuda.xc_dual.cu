@@ -114,3 +114,23 @@ __global__ void InvNormalize2DKernel(float *d_segdata, size_t pitch,
     d_segdata[idx] *= weight;
   }
 }
+
+__global__ void copyStepKernel(const cuComplex *__restrict__ src,
+                               cuComplex *__restrict__ dst,
+                               size_t node_cnt,
+                               size_t nf, /* num_frequency_points */
+                               size_t step_idx,
+                               size_t nstep)
+{
+  size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t total = node_cnt * nf;
+  if (tid >= total)
+    return;
+
+  size_t node = tid / nf;
+  size_t freq = tid % nf;
+
+  /* src layout : (((node*nstep)+step)*nf)+freq  (freq 为最快) */
+  size_t src_idx = (node * nstep + step_idx) * nf + freq;
+  dst[tid] = src[src_idx];
+}

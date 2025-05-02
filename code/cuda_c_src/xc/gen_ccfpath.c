@@ -110,6 +110,9 @@ void SacheadProcess(SACHEAD *ncfhd,
     {
         ncfhd->nzyear = time_info->year;
         ncfhd->nzjday = time_info->day_of_year;
+        // print nzyear, nzjday, nzhour, nzmin
+        printf("nzyear=%d, nzjday=%d, nzhour=%d, nzmin=%d\n",
+               ncfhd->nzyear, ncfhd->nzjday, ncfhd->nzhour, ncfhd->nzmin);
         ncfhd->nzhour = time_info->hour;
         ncfhd->nzmin = time_info->minute;
         ncfhd->nzsec = 0;

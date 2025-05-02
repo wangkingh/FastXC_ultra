@@ -86,17 +86,18 @@ static void *filter_nodes(void *arg)
         }
 
         // 解析时间信息
-        const char *src_fullpath  = src_paths->paths[global_src_idx];
-        const char *src_basename  = get_basename(src_fullpath);
+        const char *src_fullpath = src_paths->paths[global_src_idx];
+        const char *src_basename = get_basename(src_fullpath);
         int year = 0, jday = 0, hhmm = 0;
-        sscanf(src_basename, "%*[^.].%4d.%3d.%4d.%*[^.].%*s", &year, &jday, &hhmm);
-
+        sscanf(src_basename,
+               "%*[^.].%*[^.].%4d.%3d.%4d.%*[^.].%*s",
+               &year, &jday, &hhmm);
         int hour = hhmm / 100;   // 比如2359 -> 小时=23
         int minute = hhmm % 100; // 分钟=59
-        node->time_info.year        = year;
+        node->time_info.year = year;
         node->time_info.day_of_year = jday;
-        node->time_info.hour        = hour;
-        node->time_info.minute      = minute;        
+        node->time_info.hour = hour;
+        node->time_info.minute = minute;
 
         // 获取地理坐标
         double evla = phd_src->stla;

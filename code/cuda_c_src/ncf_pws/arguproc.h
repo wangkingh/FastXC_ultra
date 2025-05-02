@@ -10,18 +10,29 @@
 #include <unistd.h>
 #include <string.h>
 
+/*-------------------------------------------------------------
+ * 命令行参数容器
+ *-----------------------------------------------------------*/
 typedef struct ARGUTYPE
 {
+  char *big_sac;   /* Big-SAC 文件路径            */
+  char *stack_dir; /* 输出目录根                  */
+  int gpu_id;      /* GPU 设备 ID                 */
 
-  char *big_sac;    // input list file of -A and -B
-  char *stack_dir;  // output dir for CC vector
-  int gpu_id;       // GPU ID
-  int save_linear;  // 是否线性叠加结果
-  int save_pws;     // 保留相位加权叠加结果
-  int save_tfpws;   // 保留时频域相位加权叠加结果
-  int gpu_task_num; // 同时开启的gpu数量
+  /* 保存选项 */
+  int save_linear; /* 保存线性叠加结果            */
+  int save_pws;    /* 保存 PWS 结果               */
+  int save_tfpws;  /* 保存 TF-PWS 结果            */
+
+  /* 性能控制 */
+  int gpu_task_num; /* 并发 GPU 任务数             */
+
+  /* 新增：子叠加参数 */
+  int sub_stack_size;  /* 每几道先做一次叠加，<2 表示关闭 */
+  char *src_info_file; /* 若为 NULL 则不过滤 */
 } ARGUTYPE;
 
-void usage();
+void usage(void);
 void ArgumentProcess(int argc, char **argv, ARGUTYPE *parg);
-#endif
+
+#endif /* _ARG_PROC_H */

@@ -4,11 +4,11 @@
 # ARCH = sm_89
 
 # Compiler flags
-CFLAGS=-I/usr/local/cuda/include
-NVCCFLAGS=-g -G -arch=$(ARCH)
+CFLAGS  = -D_FILE_OFFSET_BITS=64 -I/usr/local/cuda/include
+NVCCFLAGS = -g -G -arch=$(ARCH) -Xcompiler "-D_FILE_OFFSET_BITS=64"
 
 # Linker flags
-LDFLAGS=-L/usr/local/cuda/lib64 -lcufft -lcudart -lm -L/usr/lib/x86_64-linux-gnu
+LDFLAGS = -L/usr/local/cuda/lib64 -lcufft -lcudart -lm -L/usr/lib/x86_64-linux-gnu
 
 CUDAOBJS=cuda.stransform.o \
 		cuda.estimate_batch.o \
@@ -18,9 +18,10 @@ CUDAOBJS=cuda.stransform.o \
 
 OBJS=arguproc.o \
 	sacio.o \
+	prestack.o \
 	gen_ncf_path.o \
 	util.o \
-	read_big_sac.o
+	big_sacio.o
 
 BINDIR=../../bin
 PROG=$(BINDIR)/ncf_pws

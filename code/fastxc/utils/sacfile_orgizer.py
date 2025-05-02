@@ -1,3 +1,8 @@
+# 假设 dataclass 已定义
+from __future__ import annotations
+from ..config_parser.schema import ArrayInfo
+from typing import Optional, Tuple, List
+from pathlib import Path
 from fastxc.SeisHandler import SeisArray
 from pandas import Timestamp
 from typing import List
@@ -99,33 +104,41 @@ def gen_seis_file_group(
     return seis_array.files_group, stas, times
 
 
-def orgnize_sacfile(array_info1, array_info2, cpu_count):
+
+
+
+# ----------------------------------------------------------------------------- #
+def orgnize_sacfile(
+    array1: ArrayInfo | dict,
+    array2: Optional[ArrayInfo | dict],
+    cpu_count: int,
+) -> Tuple[
+    List[str], List[str],          # stas1,   stas2
+    List[str], List[str],          # times1,  times2
+    List[str], List[str],          # files_group1, files_group2
+]:
     """
-    process sacfiles
+    组织 SAC 文件并按阵列拆分。
+    现在首选传入 ArrayInfo; 若仍传 dict 会自动转换，保持向后兼容。
     """
-    # step 0: extract array parameters from input
-    sac_dir1 = array_info1["sac_dir"]
-    pattern1 = array_info1["pattern"]
-    sta_list_path1 = array_info1["sta_list"]
-    time_start1 = array_info1["time_start"]
-    time_end1 = array_info1["time_end"]
-    time_list_path1 = array_info1["time_list"]
-    component_list1 = array_info1["component_list"]
 
-    sac_dir2 = array_info2["sac_dir"]
-    pattern2 = array_info2["pattern"]
-    sta_list_path2 = array_info2["sta_list"]
-    time_start2 = array_info2["time_start"]
-    time_end2 = array_info2["time_end"]
-    time_list_path2 = array_info2["time_list"]
-    component_list2 = array_info2["component_list"]
+    # ---------------- 0) 构造 / 回退兼容 ---------------- #
+    if isinstance(array1, dict):                        # ★ 兼容旧代码
+        array1 = ArrayInfo.from_cfg(array1)
 
-    time_range_1 = [time_start1, time_end1]
-    time_range_2 = [time_start2, time_end2]
+    if array2 is not None and isinstance(array2, dict): # ★
+        array2 = ArrayInfo.from_cfg(array2)
 
-    # step 1: generating sac file list group
+    # ---------------- 1) 阵列-1 处理 ------------------- #
+    sac_dir1: Path        = Path(array1.sac_dir).expanduser()
+    pattern1              = array1.pattern
+    sta_list_path1        = array1.sta_list
+    time_list_path1       = array1.time_list
+    component_list1       = array1.component_list
+    time_range_1          = [array1.time_start, array1.time_end]
+
     files_group1, stas1, times1 = gen_seis_file_group(
-        sac_dir1,
+        str(sac_dir1),               # 旧函数仍吃 str -> 显式转换
         pattern1,
         sta_list_path1,
         time_list_path1,
@@ -133,16 +146,29 @@ def orgnize_sacfile(array_info1, array_info2, cpu_count):
         time_range_1,
         cpu_count,
     )
-    files_group2, stas2, times2 = gen_seis_file_group(
-        sac_dir2,
-        pattern2,
-        sta_list_path2,
-        time_list_path2,
-        component_list2,
-        time_range_2,
-        cpu_count,
-    )
 
+    # ---------------- 2) 阵列-2（可选） ---------------- #
+    if array2 is None or array2.sac_dir == "NONE":
+        stas2, times2, files_group2 = [], [], []
+    else:
+        sac_dir2: Path        = Path(array2.sac_dir).expanduser()
+        pattern2              = array2.pattern
+        sta_list_path2        = array2.sta_list
+        time_list_path2       = array2.time_list
+        component_list2       = array2.component_list
+        time_range_2          = [array2.time_start, array2.time_end]
+
+        files_group2, stas2, times2 = gen_seis_file_group(
+            str(sac_dir2),
+            pattern2,
+            sta_list_path2,
+            time_list_path2,
+            component_list2,
+            time_range_2,
+            cpu_count,
+        )
+
+    # ---------------- 3) 返回 -------------------------- #
     return (
         stas1,
         stas2,

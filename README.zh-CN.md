@@ -1,148 +1,131 @@
 <p align="center">
-  <a href="https://github.com/wangkingh/FastXC/actions">
-    <img src="https://img.shields.io/github/actions/workflow/status/wangkingh/FastXC_ultra/ci.yml?branch=main&label=CI&logo=github" alt="CI 状态">
+  <a href="https://github.com/wangkingh/FastXC_ultra/actions">
+    <img src="https://img.shields.io/github/actions/workflow/status/wangkingh/FastXC_ultra/ci.yml?branch=main&label=CI&logo=github" alt="CI Status">
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/wangkingh/FastXC_ultra?color=blue&logo=open-source-initiative" alt="MIT 许可证">
+    <img src="https://img.shields.io/github/license/wangkingh/FastXC_ultra?color=blue&logo=open-source-initiative" alt="MIT License">
   </a>
-  <a href="https://github.com/wangkingh/FastXC/stargazers">
+  <a href="https://github.com/wangkingh/FastXC_ultra/stargazers">
     <img src="https://img.shields.io/github/stars/wangkingh/FastXC_ultra?style=social" alt="GitHub stars">
   </a>
-  <a href="https://github.com/wangkingh/FastXC/issues">
-    <img src="https://img.shields.io/github/issues/wangkingh/FastXC_ultra?logo=github" alt="未解决 Issue">
+  <a href="https://github.com/wangkingh/FastXC_ultra/issues">
+    <img src="https://img.shields.io/github/issues/wangkingh/FastXC_ultra?logo=github" alt="Open issues">
   </a>
-  <a href="https://github.com/wangkingh/FastXC/pulls">
-    <img src="https://img.shields.io/github/issues-pr/wangkingh/FastXC_ultra?logo=github" alt="开放的 Pull Request">
+  <a href="https://github.com/wangkingh/FastXC_ultra/pulls">
+    <img src="https://img.shields.io/github/issues-pr/wangkingh/FastXC_ultra?logo=github" alt="Open pull requests">
   </a>
-  <img src="https://img.shields.io/github/last-commit/wangkingh/FastXC_ultra?logo=git" alt="最后提交时间">
-  <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA ≥11.8">
+  <img src="https://img.shields.io/github/last-commit/wangkingh/FastXC_ultra?logo=git" alt="last commit">
+  <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA >=11.8">
 </p>
 
-* Switch language / 切换语言: [English](README.md)
+<!-- 切换语言 / Switch language: [English](README.md) -->
 
 ---
 
-# FastXC
-**适用于背景噪声互相关（1 分量 & 9 分量）的高性能 CPU‑GPU 异构处理流程**
+# FastXC Ultra
+**面向单/双阵列（1 & 9 分量）环境噪声互相关的高性能 CPU‑GPU 流水线**  
 
-FastXC 通过 **CUDA‑C 内核** 与 **Python 控制器** 协同工作，将原始 SAC 波形快速转换为叠加后的噪声相关函数（NCF）。
+FastXC Ultra 以 **Python 控制器** 协调 **CUDA‑C 内核**，将原始 SAC 波形在几分钟内堆叠成噪声互相关函数（NCF）——昔日的“数小时”现在只需“数分钟”。
 
-> **注意**：当前 *PWS* 与 *tf‑PWS* 内核需要 **≥ 20 GB 显存** 的 GPU。  
-> 显存较小的显卡仍可运行线性叠加或较短窗口。
+> **注意**：GPU 叠加（PWS / tf‑PWS）仍需 **≥ 20 GB 显存/卡**。  
+> 显存更小的显卡可使用线性叠加或更短窗口。
 
 ---
 
-## 🚩 主要特性
-| 类别 | 亮点 |
+## 🚩 关键特性
+| 分类 | 亮点 |
 |------|------|
-| **速度** | 针对 `sac2spec_ultra`、`xc_fast`、`RotateNCF` 的 CUDA 加速内核 |
-| **灵活性** | 支持单阵列 **或** 双阵列互相关，单分量 **或** 3×3=9 分量流程 |
-| **叠加** | 线性、**PWS**、**tf‑PWS**（GPU 加速） |
-| **自动化** | 单文件配置 (`.ini`) + `FastXCPipeline` 分步骤模式（`SKIP`、`CMD_ONLY` 等） |
-| **清晰 I/O** | 基于正则的 SAC 检索、自动文件列表、可选合并与 DAT 输出 |
+| **速度** | `sac2spec_ultra`、`xc_fast`、`ncf_pws` 等 CUDA 加速内核 |
+| **灵活** | 支持单阵列 **或** 双阵列，单分量 **或** 3×3 = 9 分量流程 |
+| **叠加** | 线性、**PWS**、**tf‑PWS** 皆享 GPU 加速 |
+| **自动化** | 单个 INI 配置 + `FastXCPipeline` 分步模式（`SKIP`、`CMD_ONLY` …） |
+| **干净 I/O** | 正则匹配 SAC、自动文件列表、增量写入 NCF |
 
 ---
 
 ## 🌱 快速安装
 ```bash
+# 0. 克隆仓库
 git clone https://github.com/wangkingh/FastXC_ultra
+cd FastXC_ultra
 
-cd utils
+# 1. 编译 CUDA/C 可执行文件（必需）
+cd cuda_c_src && make veryclean && make    # 如需更改架构，编辑 Makefile 中 ARCH
 
-bash compile.sh
+# 2. 配置 Python 环境（推荐）
+pip install -r requirements.txt            # 文件中列出经过测试的版本
 
-./chech_gpu
-
-# 0. 查看 GPU 信息，根据输出修改 cuda_c_src/Makefile 中的 arch 选项
-
-cd FastXC
-
-# 1. 编译 CUDA/C 可执行文件
-cd cuda_c_src && make veryclean && make
-
-# 2. 检查 Python 环境
-pip install numpy pandas scipy obspy ...
-
-# 3. 生成模板配置或从仓库复制
+# 3. 生成模板配置（英文注释）
 python -m fastxc --generate-template
-vim template_config.ini.copy   # 修改绝对路径
 
-# 4. 在 run.py 中修改配置路径并运行完整流水线
-python run.py
+# 4. 复制并修改模板（示例）
+cp template_config.ini my.ini
+vim my.ini
+
+# 5. 运行完整流程（示例）
+python run.py -c my.ini
 ```
 
-### 构建贴士
-*更换 GPU 计算架构* — 编辑 `cuda_c_src/Makefile`
+### 架构提示
+在 `cuda_c_src/Makefile` 中修改计算能力，例如：
+```make
+export ARCH = sm_89      # RTX 4090 → CC 8.9
 ```
-export ARCH=sm_89   # 例如 RTX 4090 → CC 8.9
-```
-检查方法：
+验证：
 ```bash
 utils/check_gpu/compile.sh && utils/check_gpu/check_gpu
 ```
 
 ---
 
-## 🏗 目录结构一览
+## 🏗 目录结构
 <details>
 <summary>点击展开</summary>
 
 ```text
-cuda_c_src/          CUDA 内核与 Makefile
-  ├─ sac2spec_stable/ 将 sac 转为谱
-  ├─ sac2spec_ultra/  使用额外滤波将 sac 转为谱
-  ├─ xc/              计算谱间互相关
-  ├─ ncf_pws/         叠加 NCF
-  ├─ rotate/          将 NCF 从 ENZ 坐标旋转到 RTZ
-  ├─ Makefile
+cuda_c_src/          CUDA 内核 + Makefile
+  ├─ sac2spec_ultra/   SAC → 频谱
+  ├─ xc/               频谱 × 频谱
+  ├─ ncf_pws/          PWS / tf‑PWS 叠加
+  ├─ rotate/           ENZ ↔ RTZ 旋转
+  └─ Makefile
 fastxc/              Python 调度器
-  ├─ cmd_generator/   生成 *.cmds.txt
-  ├─ cmd_deployer/    派发命令
-  ├─ list_generator/  生成文件列表
-  └─ utils/           配置解析、滤波设计等
-bin/
-  ├─ sac2spec_stable
-  ├─ sac2spec_ultra
-  ├─ xc_fast
-  ├─ ncf_pws
-  ├─ RotateNCF
-utils/
-  ├─ check_gpu/     检测 GPU 能力
-  ├─ extract.py     互相关后将 “bigsac” 拆分为 sac
-  ├─ GPU_vs_CPU.png
-
+  ├─ cmd_generator/
+  ├─ cmd_deployer/
+  ├─ list_generator/
+  └─ utils/
+bin/                 编译后可执行文件
+utils/               GPU 检测、绘图脚本等
 config/              示例 *.ini
-run.py               最小启动脚本
+run.py               最小启动器
 ```
 </details>
 
 ---
 
-## ⚙️ 流水线 & 运行模式
-`run.py` 按顺序执行八个步骤：
+## ⚙️ 流水线与模式
+`run.py` 依次执行 8 个步骤：
 
 | # | 步骤 | 目的 |
 |---|------|------|
-| 1 | GenerateFilter     | 设计 FIR/IIR (`filter.txt`)          |
-| 2 | OrganizeSAC        | 按台站/时间整理 SAC                 |
-| 3 | Sac2Spec           | GPU FFT → `segspec/` 频谱           |
-| 4 | CrossCorrelation   | GPU XC → `ncf/`                     |
-| 5 | ConcatenateNcf     | 合并每日 NCF                        |
-| 6 | Stack              | 线性 / PWS / tf‑PWS                 |
-| 7 | Rotate             | ZNE ↔ RTZ                           |
-| 8 | Sac2Dat            | 可选 SAC → DAT 转换                 |
+| 1 | GenerateFilter     | FIR/IIR 设计（生成 `filter.txt`）        |
+| 2 | OrganizeSAC        | 按台站/时间整理 SAC                      |
+| 3 | Sac2Spec           | GPU FFT → `segspec/` 频谱               |
+| 4 | CrossCorrelation   | GPU XC → `ncf/`                         |
+| 5 | ConcatenateNcf     | 合并日级 NCF                            |
+| 6 | Stack              | 线性 / PWS / tf‑PWS                     |
+| 7 | Rotate             | ENZ ↔ RTZ                               |
+| 8 | Sac2Dat            | 可选：SAC → DAT                         |
 
-每步可选择处理模式：
+每步可选模式：
 
-| 值 | 模式名 | 说明 |
-|----|--------|------|
-| 1 | SKIP        | 不执行              |
-| 2 | PREPARE     | 仅生成目录或文件列表 |
-| 3 | CMD_ONLY    | 仅生成命令行        |
-| 4 | DEPLOY_ONLY | 仅派发命令（不生成） |
-| 5 | ALL         | 执行以上全部动作     |
-
-使用 `StepMode` 覆盖：
+| 模式 | 行为 |
+|------|------|
+| `SKIP`        | 跳过 |
+| `PREPARE`     | 仅生成目录 / 文件列表 |
+| `CMD_ONLY`    | 只生成终端命令 |
+| `DEPLOY_ONLY` | 执行命令（不重新生成） |
+| `ALL`         | 以上全部 |
 
 ```python
 from fastxc import StepMode, FastXCPipeline
@@ -155,95 +138,105 @@ pipe.run({
 
 ---
 
-## 📝 配置速查（详细请见模板文件）
-```ini
-[array_info1]
-sac_dir = /data/array1
-pattern = {home}/{YYYY}/{station}.{component}.{JJJ}.{suffix}
-component_list = E,N,Z
-time_start = 2019-01-01 00:00:00
-time_end   = 2019-12-31 23:59:59
-
-[array_info2]
-sac_dir = NONE
-component_list = Z
-
-[parameters]
-output_dir = /data/out
-delta      = 0.05
-bands      = 0.1/0.5 0.5/1
-max_lag    = 600
-win_len    = 3600
-shift_len  = 3600
-stack_flag = 110
-
-[executables]
-sac2spec = ./bin/sac2spec_ultra
-xc       = ./bin/xc_fast
-stack    = ./bin/ncf_pws
-rotate   = ./bin/RotateNCF
-
-[device_info]
-gpu_list    = 0,1
-gpu_task_num= 1,1
-gpu_mem_info= 40,40
-cpu_count   = 32
+## 📝 配置速查
+下例节选自 **2025‑05‑02** 版本；完整带注释模板请执行：
+```bash
+python -m fastxc --generate-template
 ```
-执行 `python -m fastxc --generate-template` 生成完整带注释模板。
+
+```ini
+[array1]                         ; ---- 数据源 #1 ----
+sac_dir       = ./               ; 根目录
+pattern       = {home}/{*}/{*}/{station}.{YYYY}.{JJJ}.{*}.{component}.{suffix}
+time_start    = 2017-09-01 00:00:00
+time_end      = 2017-09-30 01:00:00
+component_list= E,N,Z            ; ENZ 顺序
+time_list     = NONE
+sta_list      = NONE
+
+[array2]                         ; ---- 数据源 #2（可选） ----
+sac_dir       = NONE
+pattern       = {home}/{YYYY}/{station}_{component}_{JJJ}.{suffix}
+component_list= Z                ; 单分量示例
+
+[preprocess]                     ; ---- 预处理 ----
+win_len     = 3600               ; 秒
+shift_len   = 3600
+delta       = 0.1                ; 采样间隔 → 10 Hz
+normalize   = RUN-ABS-MF         ; 滑动绝对值 + 中值滤波
+bands       = 0.1/0.5 0.5/1 1/2  ; 频带（空格分隔）
+whiten      = BEFORE             ; XC 前预白化
+skip_step   = -1                 ; -1=不跳窗口；或 0,1,2...
+
+[xcorr]                          ; ---- 互相关 ----
+max_lag     = 100                ; 秒
+write_mode  = APPEND             ; 增量写 NCF
+write_segment = False            ; 不保存每段 NC
+distance_range = -1/50000        ; km，限制台站距
+azimuth_range  = -1/360          ; °，限制方位
+source_info_file = NONE
+
+[stack]                          ; ---- 叠加 ----
+stack_flag     = 100             ; 1=线性，0=PWS，0=tf‑PWS
+sub_stack_size = 1
+source_info_file = NONE
+
+[executables]                    ; ---- 可执行文件 ----
+sac2spec = /path/to/bin/sac2spec_ultra
+xc       = /path/to/bin/xc_multi_channel
+stack    = /path/to/bin/ncf_pws
+rotate   = /path/to/bin/RotateNCF
+
+[device]                         ; ---- 硬件 ----
+gpu_list      = 0,1,2,3
+gpu_task_num  = 1,1,1,1
+gpu_mem_info  = 40,40,40,40     ; GiB
+cpu_count     = 100
+
+[storage]                        ; ---- 输出 ----
+output_dir = ./
+overwrite   = True
+clean_ncf   = True
+
+[debug]                          ; ---- 调试 ----
+dry_run        = False
+log_file_path  = NONE
+```
 
 ---
 
-## 🖥 环境检查
+## 🖥 环境自检
 ```bash
-nvidia-smi
-nvcc --version
+nvidia-smi                   # 驱动需支持 CUDA 11.8+
+nvcc --version               # 工具链与驱动一致
+python -m fastxc --doctor    # 内置诊断脚本
 ```
 
 ---
 
 ## ℹ️ 常见问题
-<details><summary>本仓库与 <a href="https://github.com/wangkingh/FastXC" target="_blank">FastXC</a> 有何区别？</summary>
+<details><summary>只跑单阵列怎么办？</summary>
 
-1. **更高采样率支持**  
-   *PWS* / *tf‑PWS* 的 CUDA 批处理实现已重写，可处理更高采样率数据。
+将 `[array2].sac_dir = NONE` 即可自动切换为单阵列模式。
+</details>
 
-2. **磁盘友好的 NCF 输出**  
-   在 **xc** 阶段，各段 NCF 现在 **追加写入原文件尾部**，而非写入新文件。
+<details><summary>如何跳过旋转？</summary>
 
-3. **取消 “dual” 模式**  
-   删除 *dual* 工作流。互相关与叠加在单一高性能模式运行，速度更快，但占用更多磁盘。
-
-4. **时间戳过滤**  
-   可提供时间列表文件，仅保留落在指定时间段的 SAC 文件。
-
-5. **更清晰的配置**  
-   配置文件重新设计：常用项前置，进阶参数放在 **advanced** 区域，便于自定义。
-
+可省略 `[rotate]` 小节，或运行时指定：
+```python
+pipe.run({"Rotate": StepMode.SKIP})
+```
 </details>
 
 ---
 
 ## 📒 更新日志
-见 [Change Log](changelog.md)
+详见 [CHANGELOG.md](CHANGELOG.md)。
 
-## 📧 作者联系方式
-如有问题、建议或想贡献代码，请在 [issue](https://github.com/wangkingh/FastXC/issues) 里讨论或提交 Pull Request。
-
-直接联系作者：  
-**Email:** [wkh16@mail.ustc.edu.cn](mailto:wkh16@mail.ustc.edu.cn)
-
-若本项目能助力您的研究，敬请告知，作者不胜荣幸！
-
-## 🙏 致谢
-衷心感谢中国科学技术大学、中国地震局地球物理研究所、中国地震局地震预测研究所以及中国科学院地质与地球物理研究所的同事们在本程序测试和试运行期间给予的 __重要支持__！
-
-## 📜 参考文献
-Wang 等 (2025). ["High-performance CPU-GPU Heterogeneous Computing Method for 9-Component Ambient Noise Cross-correlation."](https://doi.org/10.1016/j.eqrea.2024.100357) Earthquake Research Advances. In Press.
-
-Bensen, G. D., 等 (2007). ["Processing seismic ambient noise data to obtain reliable broad-band surface wave dispersion measurements."](https://dx.doi.org/10.1111/j.1365-246x.2007.03374.x) Geophysical Journal International 169(3): 1239‑1260.
-
-Cupillard, P., 等 (2011). ["The one-bit noise correlation: a theory based on the concepts of coherent and incoherent noise."](https://doi.org/10.1111/j.1365-246X.2010.04923.x) Geophysical Journal International 184(3): 1397‑1414.
+## 📧 联系方式
+如有问题或建议，请 [提交 Issue](https://github.com/wangkingh/FastXC_ultra/issues) 或邮件联系：  
+**Email:** <wkh16@mail.ustc.edu.cn>
 
 ---
 
-© 2023‑2025 Wang Jingxi & ChatGPT O3 — 采用 MIT 许可证
+© 2023‑2025 Wang Jingxi with ChatGPT O3 — 基于 **MIT License** 许可。

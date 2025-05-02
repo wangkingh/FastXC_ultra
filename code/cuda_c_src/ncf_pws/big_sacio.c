@@ -1,4 +1,4 @@
-#include "read_big_sac.h"
+#include "big_sacio.h"
 
 static unsigned get_data_count(const SACHEAD *hd)
 {
@@ -10,100 +10,141 @@ static unsigned get_data_count(const SACHEAD *hd)
     return data_count;
 }
 
-/**
- * @brief PreReadBigSac: 仅用于扫描 big_sac 文件，得到段数与每段的数据点数
- *
- * @param big_sac         [输入] big_sac 文件
- * @param pSegmentCount   [输出] 段数
- * @param pDataCount      [输出] 每段数据点数(由第一段 SAC 头获得)
- *
- * @return 0 表示成功, -1 表示失败
- */
-int PreReadBigSac(const char *big_sac,
-                  unsigned *pSegmentCount,
-                  unsigned *pDataCount)
+/*---------------------------------------------------------------
+ * 扫描 Big-SAC，只记录每段数据区偏移量，不读进波形.
+ *--------------------------------------------------------------*/
+int PreScanBigSac(const char *big_sac,
+                  unsigned *pSegCount,
+                  unsigned *pDataCount,
+                  OffItem **pOffItems)
 {
     FILE *fp = fopen(big_sac, "rb");
     if (!fp)
     {
-        fprintf(stderr, "[PreReadBigSac] Error opening %s: %s\n",
+        fprintf(stderr, "[PreScanBigSac] open %s: %s\n",
                 big_sac, strerror(errno));
         return -1;
     }
 
-    // 读取第1段头
-    SACHEAD hd_first;
-    if (fread(&hd_first, sizeof(SACHEAD), 1, fp) != 1)
+    /* ---- dynamic OffItem array ---- */
+    unsigned cap = 128;
+    OffItem *items = malloc(cap * sizeof *items);
+    if (!items)
     {
-        fprintf(stderr, "[PreReadBigSac] Error reading first SACHEAD.\n");
+        perror("malloc");
         fclose(fp);
         return -1;
     }
 
+    /* ---- read first header ---- */
+    off_t hdr_off = 0; /* ftello == 0 */
+    SACHEAD hd_first;
+    if (fread(&hd_first, sizeof hd_first, 1, fp) != 1)
+    {
+        fprintf(stderr, "[PreScanBigSac] read first header failed\n");
+        free(items);
+        fclose(fp);
+        return -1;
+    }
 #ifdef BYTE_SWAP
-    swab4((char *)&hd_first, sizeof(SACHEAD));
+    swab4((char *)&hd_first, sizeof hd_first);
 #endif
 
-    unsigned base_data_count = get_data_count(&hd_first);
-    if (base_data_count == 0)
+    unsigned base_npts = get_data_count(&hd_first);
+    if (base_npts == 0)
     {
-        fprintf(stderr, "[PreReadBigSac] Invalid data_count=0 in first segment.\n");
+        fprintf(stderr, "[PreScanBigSac] npts=0 in first segment\n");
+        free(items);
         fclose(fp);
         return -1;
     }
 
-    // 跳过第1段的数据部分
-    size_t seg_bytes = base_data_count * sizeof(float);
-    if (fseek(fp, (long)seg_bytes, SEEK_CUR) != 0)
+    /* 保存首段 OffItem */
+    items[0].hdr_off = hdr_off;
+    items[0].data_off = hdr_off + sizeof(SACHEAD);
+    items[0].flag = 1;
+
+    const off_t data_bytes = (off_t)base_npts * sizeof(float);
+
+    /* skip first data */
+    if (fseeko(fp, data_bytes, SEEK_CUR) != 0)
     {
-        fprintf(stderr, "[PreReadBigSac] fseek error skipping first segment data.\n");
+        perror("[PreScanBigSac] fseeko");
+        free(items);
         fclose(fp);
         return -1;
     }
 
-    // 段数计1
-    unsigned seg_count = 1;
-
-    // 循环扫描后续段
+    /* ---- scan remaining segments ---- */
+    unsigned seg_cnt = 1;
     while (1)
     {
-        // 尝试读取下一段头
-        SACHEAD hd_temp;
-        size_t nread = fread(&hd_temp, sizeof(SACHEAD), 1, fp);
-        if (nread < 1)
-        {
-            // 文件读不到新的头 -> 到尾或出错 -> 结束
-            break;
-        }
+        hdr_off = ftello(fp); /* next header pos (64-bit) */
+        SACHEAD hd_tmp;
 
+        if (fread(&hd_tmp, sizeof hd_tmp, 1, fp) != 1)
+        {
+            if (feof(fp))
+                break; /* normal EOF */
+            perror("[PreScanBigSac] fread");
+            free(items);
+            fclose(fp);
+            return -1;
+        }
 #ifdef BYTE_SWAP
-        swab4((char *)&hd_temp, sizeof(SACHEAD));
+        swab4((char *)&hd_tmp, sizeof hd_tmp);
 #endif
-
-        unsigned tmp_count = get_data_count(&hd_temp);
-        if (tmp_count != base_data_count)
+        if (get_data_count(&hd_tmp) != base_npts)
         {
-            // 如果要求所有段大小一致，则报错退出
-            fprintf(stderr, "[PreReadBigSac] Mismatch data_count in segment #%u. (Expected %u, got %u)\n",
-                    seg_count + 1, base_data_count, tmp_count);
-            fclose(fp);
-            return -1;
-        }
-        // 跳过数据
-        if (fseek(fp, (long)seg_bytes, SEEK_CUR) != 0)
-        {
-            fprintf(stderr, "[PreReadBigSac] fseek error skipping data for segment #%u.\n",
-                    seg_count + 1);
+            fprintf(stderr,
+                    "[PreScanBigSac] seg#%u npts mismatch (%u vs %u)\n",
+                    seg_cnt + 1, base_npts, get_data_count(&hd_tmp));
+            free(items);
             fclose(fp);
             return -1;
         }
 
-        seg_count++;
+        /* grow OffItem array when needed */
+        if (seg_cnt == cap)
+        {
+            cap <<= 1;
+            OffItem *tmp = realloc(items, cap * sizeof *tmp);
+            if (!tmp)
+            {
+                perror("realloc");
+                free(items);
+                fclose(fp);
+                return -1;
+            }
+            items = tmp;
+        }
+
+        /* fullfill OffItem */
+        items[seg_cnt].hdr_off = hdr_off;
+        items[seg_cnt].data_off = hdr_off + sizeof(SACHEAD);
+        items[seg_cnt].flag = 1; /* 先全部标为可用 */
+
+        /* skip data block */
+        if (fseeko(fp, data_bytes, SEEK_CUR) != 0)
+        {
+            perror("[PreScanBigSac] fseeko");
+            free(items);
+            fclose(fp);
+            return -1;
+        }
+        ++seg_cnt;
     }
+    fclose(fp);
 
-    // 输出
-    *pSegmentCount = seg_count;    // 总共的段数
-    *pDataCount = base_data_count; // 每段的数据点数
+    /* ---- shrink to exact size ---- */
+    OffItem *final = realloc(items, seg_cnt * sizeof *items);
+    if (!final)
+        final = items; /* rare, keep original pointer */
+
+    /* ---- outputs ---- */
+    *pSegCount = seg_cnt;
+    *pDataCount = base_npts;
+    *pOffItems = final;
     return 0;
 }
 

@@ -1,105 +1,122 @@
-import struct
-import os
+#!/usr/bin/env python3
+import struct, os, datetime
 
-# SAC header size (bytes), 通常为 632 字节。如果不同，请根据实际情况修改
+VERBOSE = False
 SAC_HEADER_SIZE = 632
 
-# 根据SAC规范，header部分包含固定数量的float,int和char字段，此处假设:
-# npts在头的某个固定位置（具体偏移需根据SAC格式手册或已有代码）
-# iftype在另一个固定位置，同理。
-# 以下offset只是示例，请根据SAC手册或C代码中的定义修改
-NPTS_OFFSET = 79 * 4  # SAC header中的npts是第80个float字段(从0开始计数时是79*4字节处)
-IFTYPE_OFFSET = 86 * 4  # SAC中iftype通常是第87个float字段（实际要查看官方文档或源码）
-# 注意：实际SAC头结构中iftype是int类型字段，需要根据官方定义查看其偏移。
+# ---------------- SAC 头偏移（小端） ----------------
+NPTS_OFFSET = 79 * 4
+IFTYPE_OFFSET = 70 * 4 + 15 * 4  # int 区第 16 个
+OFFSET_USER4 = 176
+
+INT_BASE = 70 * 4  # int 区起始 (70 floats = 280 B)
+OFFSET_NZYEAR = INT_BASE + 0 * 4
+OFFSET_NZJDAY = INT_BASE + 1 * 4
+OFFSET_NZHOUR = INT_BASE + 2 * 4
+OFFSET_NZMIN = INT_BASE + 3 * 4
+OFFSET_NZSEC = INT_BASE + 4 * 4
+
+# ---------- 新增：字符区偏移 ----------
+CHAR_BASE = (70 + 40) * 4  # 280 + 160 = 440 B
+KSTNM_OFFSET_C = CHAR_BASE  # 8 B
+KEVNM_OFFSET_C = CHAR_BASE + 8  # 16 B (= 两块 8 B)
+
+IXY = 4  # 正确的 IXY 枚举
+DOUBLE_TYPES = {2, 3, 4}  # 需要 ×2 的 iftype
+# ---------------------------------------------------
 
 
 def read_sac_header(fd):
-    SAC_HEADER_SIZE = 632
-    head_bytes = fd.read(SAC_HEADER_SIZE)
-    if len(head_bytes) < SAC_HEADER_SIZE:
+    """读取 632 B 头并返回 (bytes,npts,iftype,time_str)；不足则返 None"""
+    buf = fd.read(SAC_HEADER_SIZE)
+    if len(buf) < SAC_HEADER_SIZE:
         return None
 
-    NPTS_OFFSET = 79 * 4  # 示例，和你原有的一致
-    IFTYPE_OFFSET = 86 * 4  # 示例，和你原有的一致
+    uf = lambda off: struct.unpack_from("<f", buf, off)[0]
+    ui = lambda off: struct.unpack_from("<i", buf, off)[0]
 
-    # 这里假设小端 (little-endian)，如果是大端需要改成 ">i"
-    npts = struct.unpack_from("<i", head_bytes, NPTS_OFFSET)[0]
-    iftype = struct.unpack_from("<i", head_bytes, IFTYPE_OFFSET)[0]
+    npts = ui(NPTS_OFFSET)
+    iftype = ui(IFTYPE_OFFSET)
 
-    # 新增读取 nzyear, nzjday, nzhour, nzmin
-    NZYEAR_OFFSET = 280
-    NZJDAY_OFFSET = 284
-    NZHOUR_OFFSET = 288
-    NZMIN_OFFSET = 292
+    # -------- 时间字段 --------
+    nzyear = ui(OFFSET_NZYEAR)
+    nzjday = ui(OFFSET_NZJDAY)
+    nzhour = ui(OFFSET_NZHOUR)
+    nzmin = ui(OFFSET_NZMIN)
+    nzsec = ui(OFFSET_NZSEC)
+    user4 = max(uf(OFFSET_USER4), 0)  # 负值时归零
 
-    nzyear = struct.unpack_from("<i", head_bytes, NZYEAR_OFFSET)[0]
-    nzjday = struct.unpack_from("<i", head_bytes, NZJDAY_OFFSET)[0]
-    nzhour = struct.unpack_from("<i", head_bytes, NZHOUR_OFFSET)[0]
-    nzmin = struct.unpack_from("<i", head_bytes, NZMIN_OFFSET)[0]
-
-    # 拼出字符串: YYYY.JJJ.HHMI
-    # 注意JDAY要3位数(如 Day 1 -> 001, Day 45 -> 045)
-    # 注意HOUR, MIN要2位数(01, 09, 10等)
+    # 默认时间串
     time_str = f"{nzyear}.{nzjday:03d}.{nzhour:02d}{nzmin:02d}"
 
-    # 将这几个值一并返回 (你也可以只返回 time_str)
-    return head_bytes, npts, iftype, time_str
+    # 校正中心时刻 → 起始时刻
+    if nzhour != -12345 and nzmin != -12345:
+        center = datetime.datetime(nzyear, 1, 1) + datetime.timedelta(
+            days=nzjday - 1, hours=nzhour, minutes=nzmin, seconds=nzsec
+        )
+        start = center + datetime.timedelta(seconds=user4)
+        jday = (start - datetime.datetime(start.year, 1, 1)).days + 1
+        time_str = f"{start.year}.{jday:03d}.{start.hour:02d}{start.minute:02d}"
+
+    return buf, npts, iftype, time_str
 
 
-def extract_segments(bigfile, output_dir):
-    """
-    从大文件中提取多个SAC段。每个段包含一个SAC头和对应的数据。
-    将其写出为独立的SAC文件。
-    """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+def extract_segments(bigfile, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+
+    # 从文件名取出 kstnm 与 kcmpnm
+    _, kstnm, kcmpnm, _ = os.path.basename(bigfile).split(".", 3)
+
+    # ------- 预处理：拆分 kstnm -------
+    k_parts = kstnm.split("-", 1)
+    k_part1 = k_parts[0][:8].ljust(8)  # kstnm 字段，8 B
+    k_part2 = (k_parts[1] if len(k_parts) > 1 else "").ljust(16)[:16]  # kevnm，16 B
+    k_part1_b = k_part1.encode("ascii")
+    k_part2_b = k_part2.encode("ascii")
+    # ----------------------------------
 
     with open(bigfile, "rb") as fd:
-        segment_index = 0
-        fname = os.path.basename(bigfile)
-        kstnm, kcmpnm, _ = fname.split(".")
+        seg = 0
         while True:
-            # 尝试读取下一个头
-            pos = fd.tell()
-            header_info = read_sac_header(fd)
-            if header_info is None:
-                # 读不到更多数据，结束
+            hdr = read_sac_header(fd)
+            if hdr is None:
                 break
 
-            head_bytes, npts, iftype, time_str = header_info
+            head_bytes, npts, iftype, time_str = hdr
 
-            # 根据iftype和npts确定数据大小
-            # 若iftype==IXY，需要2*npts个float数据，否则就是npts个float数据
-            # 在C中定义IXY常量的值是多少，需要保持一致，这里假设IXY=1做示例
-            IXY = 1  # 实际值请根据SAC定义修改
-            data_count = npts
-            if iftype == IXY:
-                data_count = npts * 2
+            # 把 header 变成可写 bytearray，再写入 kstnm/kevnm
+            head = bytearray(head_bytes)
+            head[KSTNM_OFFSET_C : KSTNM_OFFSET_C + 8] = k_part2_b
+            head[KEVNM_OFFSET_C : KEVNM_OFFSET_C + 16] = k_part1_b
+            head_bytes = bytes(head)  # 重新转回 bytes 以写文件
 
-            data_size = data_count * 4  # float数据，4字节一个
-
-            # 读取数据
-            data_bytes = fd.read(data_size)
-            if len(data_bytes) < data_size:
-                # 数据不完整，结束或报错
-                print("Incomplete data at the end of file.")
+            # ------- 计算数据大小 -------
+            samples = npts * (2 if iftype in DOUBLE_TYPES else 1)
+            data_bytes = samples * 4
+            data = fd.read(data_bytes)
+            if len(data) < data_bytes:
+                print("Incomplete data block.")
                 break
+            # ---------------------------
 
-            # 将这一段写出到单独的文件
-            out_name = f"{kstnm}.{time_str}.{kcmpnm}.sac"
-            out_path = os.path.join(output_dir, out_name)
+            out_path = os.path.join(
+                out_dir,
+                f"{kstnm}.{time_str if '-12345' not in time_str else f'seg{seg:04d}'}.{kcmpnm}.sac",
+            )
             with open(out_path, "wb") as out_fd:
                 out_fd.write(head_bytes)
-                out_fd.write(data_bytes)
+                out_fd.write(data)
 
-            print(f"Extracted segment {segment_index} to {out_path}")
-            segment_index += 1
+            if VERBOSE:
+                print(f"{seg:04d}  {os.path.basename(out_path)}  bytes={data_bytes}")
 
-    print("Extraction finished.")
+            seg += 1
+
+    print(f"Extraction {bigfile} finished: {seg} segments.")
 
 
+# ---------------- 入口 ----------------
 if __name__ == "__main__":
-
-    # extract_segments("/mnt/c/Users/admin/Desktop/FastXC_test/jls_cc/ncf/233-334.Z-Z.sac", "./test")
-
-    extract_segments("/mnt/f/hinet_cc/ncf/AAKH-ABNH.U-U.bigsac", "./test3")
+    extract_segments(
+        "/mnt/g/test_fastxc_output/ncf/VV-VV.AAKH-ABNH.U-U.bigsac", "./test3"
+    )

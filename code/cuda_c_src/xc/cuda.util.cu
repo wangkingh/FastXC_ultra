@@ -65,14 +65,14 @@ int EstimateGpuBatch(size_t gpu_id, int nspec, int nstep, int gpu_task_num)
     cufftEstimateMany(rank, n, inembed, istride, idist, onembed, ostride, odist, type, pair_count, &cufftram);
     reqram = req_input_ram + req_output_ram + req_final_output_ram + req_final_cc_ram + cufftram;
     // 打印各部分占用
-    printf("Src count: %ld\n", src_count);
-    printf("Input ram: %.3f GB\n", req_input_ram * 1.0 / (1L << 30));
-    printf("Output ram: %.3f GB\n", req_output_ram * 1.0 / (1L << 30));
-    printf("Final output ram: %.3f GB\n", req_final_output_ram * 1.0 / (1L << 30));
-    printf("Final cc ram: %.3f GB\n", req_final_cc_ram * 1.0 / (1L << 30));
-    printf("Cufft ram: %.3f GB\n", cufftram * 1.0 / (1L << 30));
-    printf("Total ram: %.3f GB\n", reqram * 1.0 / (1L << 30));
-    printf("-----------------------------\n");
+    // printf("Src count: %ld\n", src_count);
+    // printf("Input ram: %.3f GB\n", req_input_ram * 1.0 / (1L << 30));
+    // printf("Output ram: %.3f GB\n", req_output_ram * 1.0 / (1L << 30));
+    // printf("Final output ram: %.3f GB\n", req_final_output_ram * 1.0 / (1L << 30));
+    // printf("Final cc ram: %.3f GB\n", req_final_cc_ram * 1.0 / (1L << 30));
+    // printf("Cufft ram: %.3f GB\n", cufftram * 1.0 / (1L << 30));
+    // printf("Total ram: %.3f GB\n", reqram * 1.0 / (1L << 30));
+    // printf("-----------------------------\n");
     if (reqram > availram)
     {
       if (step > min_step)

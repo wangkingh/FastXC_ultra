@@ -1,101 +1,126 @@
-from typing import List
+# list_generator/rotate_list_generator.py
+from __future__ import annotations
+
 import logging
-import os
-import re
 from itertools import product
+from pathlib import Path
+from typing import List
 
-logger = logging.getLogger(__name__)
-
-
-def prepare_enz_dirs(stack_flag: str, output_dir: str):
-    linear_flag = int(stack_flag[0])  # first digit -> linear
-    pws_flag = int(stack_flag[1])  # second digit -> pws
-    tfpws_flag = int(stack_flag[2])  # third digit -> tfpws
-
-    enz_dirs = []
-    if linear_flag:
-        enz_dir = os.path.join(output_dir, "stack", "linear")
-        enz_dirs.append(enz_dir)
-    if pws_flag:
-        enz_dir = os.path.join(output_dir, "stack", "pws")
-        enz_dirs.append(enz_dir)
-    if tfpws_flag:
-        enz_dir = os.path.join(output_dir, "stack", "tfpws")
-        enz_dirs.append(enz_dir)
-
-    return enz_dirs
+log = logging.getLogger(__name__)
 
 
+# ────────────────────────────────────────── #
+#  0. 依据 stack_flag 返回需旋转的 ENZ 目录   #
+# ────────────────────────────────────────── #
+def prepare_enz_dirs(stack_flag: str, output_dir: Path) -> list[Path]:
+    """根据 3 位 stack_flag 组合出 linear / pws / tfpws ENZ 目录列表。"""
+    flags = tuple(int(x) for x in stack_flag[:3])  # 只看前三位
+    labels = ("linear", "pws", "tfpws")
+    return [
+        output_dir / "stack" / lbl
+        for lbl, f in zip(labels, flags)
+        if f
+    ]
+
+
+# ────────────────────────────────────────── #
+#  1. 为单个 ENZ 目录生成 in/out 列表文件     #
+# ────────────────────────────────────────── #
 def _gen_rotate_list(
-    enz_dir, label, component_list_1, component_list_2, output_dir
-) -> bool:
+    enz_dir: Path,
+    label: str,
+    comp1: List[str],
+    comp2: List[str],
+    output_dir: Path,
+) -> None:
     """
-    Prepare the input and output file lists for the rotation from ENZ to RTZ.
+    对 enz_dir 下每个 <sta1_sta2> 目录生成::
+
+        rotate_list/<label>/<sta_pair>/{enz_list.txt, rtz_list.txt}
     """
-    rtz_ncf_dir = os.path.join(output_dir, "stack", f"rtz_{label}")
-    rotate_list_dir = os.path.join(output_dir, "rotate_list")
+    rtz_ncf_dir   = output_dir / "stack" / f"rtz_{label}"
+    rotate_root   = output_dir / "rotate_list" / label
+    mapping       = {c: ch for c, ch in zip(comp1, "ENZ")}
+    mapping.update({c: ch for c, ch in zip(comp2, "ENZ")})
 
-    mapping = {component_list_1[i]: val for i, val in enumerate(["E", "N", "Z"])}
-    mapping.update({component_list_2[i]: val for i, val in enumerate(["E", "N", "Z"])})
+    ENZ_order = [
+        "E-E", "E-N", "E-Z",
+        "N-E", "N-N", "N-Z",
+        "Z-E", "Z-N", "Z-Z",
+    ]
+    RTZ_order = [
+        "R-R", "R-T", "R-Z",
+        "T-R", "T-T", "T-Z",
+        "Z-R", "Z-T", "Z-Z",
+    ]
 
-    ENZ_pair_order = ["E-E", "E-N", "E-Z", "N-E", "N-N", "N-Z", "Z-E", "Z-N", "Z-Z"]
-    RTZ_pair_order = ["R-R", "R-T", "R-Z", "T-R", "T-T", "T-Z", "Z-R", "Z-T", "Z-Z"]
-
-    for sta_pair in os.listdir(enz_dir):
-        sta_pair_path = os.path.join(enz_dir, sta_pair)
-        enz_sac_num = len(os.listdir(sta_pair_path))
-        if enz_sac_num != 9:
+    for sta_pair_dir in enz_dir.iterdir():
+        if not sta_pair_dir.is_dir():
             continue
-        enz_group = {}
-        for component_pair in product(component_list_1, component_list_2):
-            component1, component2 = component_pair
-            component_info = f"{mapping[component1]}-{mapping[component2]}"
-            fname = f"{sta_pair}.{component1}-{component2}.{label}.sac"
-            file_path = os.path.join(sta_pair_path, fname)
-            enz_group.update({component_info: file_path})
 
-        rotate_dir = os.path.join(rotate_list_dir, f"{label}", sta_pair)
-        os.makedirs(rotate_dir, exist_ok=True)
+        sta_pair = sta_pair_dir.name
+        if sum(1 for _ in sta_pair_dir.iterdir()) != 9:
+            # 不是 9 个分量 → 跳过
+            continue
 
-        in_list = os.path.join(rotate_dir, "enz_list.txt")
-        out_list = os.path.join(rotate_dir, "rtz_list.txt")
+        # ---------- 构造 ENZ 路径字典 -------------------------------- #
+        enz_group: dict[str, str] = {}
+        for c1, c2 in product(comp1, comp2):
+            tag = f"{mapping[c1]}-{mapping[c2]}"
+            fname = f"{sta_pair}.{c1}-{c2}.{label}.sac"
+            enz_path = sta_pair_dir / fname
+            enz_group[tag] = str(enz_path)
 
-        # Write the input stack file paths
-        with open(in_list, "w") as f:
-            enz_group = {key: enz_group[key] for key in ENZ_pair_order}
-            f.write("\n".join(enz_group.values()))
+        # ---------- 输出文件 ---------------------------------------- #
+        rotate_dir = rotate_root / sta_pair
+        rotate_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write the output RTZ file paths
-        with open(out_list, "w") as f:
-            for component_pair in RTZ_pair_order:
-                outpath = os.path.join(
-                    rtz_ncf_dir, sta_pair, f"{sta_pair}.{component_pair}.ncf.sac"
-                )
-                f.write(outpath + "\n")
-    return True
+        in_list  = rotate_dir / "enz_list.txt"
+        out_list = rotate_dir / "rtz_list.txt"
+
+        # in_list
+        with in_list.open("w") as fp:
+            for tag in ENZ_order:
+                fp.write(enz_group[tag] + "\n")
+
+        # out_list
+        with out_list.open("w") as fp:
+            for tag in RTZ_order:
+                out_path = rtz_ncf_dir / sta_pair / f"{sta_pair}.{tag}.ncf.sac"
+                fp.write(str(out_path) + "\n")
 
 
+# ────────────────────────────────────────── #
+#  2. 外部入口                               #
+# ────────────────────────────────────────── #
 def gen_rotate_list(
-    component_list1: List, component_list2: List, stack_flag: str, output_dir: str
+    component_list1: List[str],
+    component_list2: List[str],
+    stack_flag: str,
+    output_dir: str | Path,
 ) -> bool:
     """
-    Generate the rotate list for the given seismic array configuration.
+    生成 `rotate_list/` 目录所需的 {enz_list, rtz_list} 文件。
+
+    Returns
+    -------
+    bool
+        True 生成成功 / False 无需生成。
     """
-    # get all stack directories for ENZ
-    enz_dirs = prepare_enz_dirs(stack_flag, output_dir)
+    output_dir = Path(output_dir).expanduser().resolve()
+    enz_dirs   = prepare_enz_dirs(stack_flag, output_dir)
+
     if not enz_dirs:
-        logger.warning("No ENZ directories found for generating rotate lists.")
+        log.warning("No ENZ directories matched stack_flag '%s'.", stack_flag)
         return False
 
-    # iterate over all ENZ directories
     for enz_dir in enz_dirs:
-        label = os.path.basename(enz_dir)
-        logger.info(f"Generating rotate list for ENZ dir: {enz_dir}, label: {label}")
-        _gen_rotate_list(
-            enz_dir=enz_dir,
-            label=label,
-            component_list_1=component_list1,
-            component_list_2=component_list2,
-            output_dir=output_dir,
-        )
+        if not enz_dir.is_dir():
+            log.warning("ENZ directory not found: %s", enz_dir)
+            continue
+
+        label = enz_dir.name  # linear / pws / tfpws
+        log.info("Generating rotate list for %s …", label)
+        _gen_rotate_list(enz_dir, label, component_list1, component_list2, output_dir)
+
     return True

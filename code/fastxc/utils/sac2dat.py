@@ -1,19 +1,16 @@
 from __future__ import annotations
-
 """Batch-convert cross-correlation SAC stacks to plain-text DAT files.
 
-Changes w.r.t. the original script
-----------------------------------
-*  **Dynamic process dirs**  - every sub-directory of ``<output_dir>/stack`` that is **not**
-   itself a ``*_dat`` dir is treated as a processing branch.
-*  **Pathlib everywhere** - cleaner, platform-independent path handling.
-*  **Safe Windows launch** – ``if __name__ == "__main__"`` gate.
-
-Tested with ObsPy ≥ 1.3.
+Differences to the original (ObsPy ≥1.3 tested)
+-----------------------------------------------
+*  **Dynamic branch selection** — if any `stack/*rtz*` dirs exist (case-insensitive),
+   only those are processed; else all first-level dirs under `stack/` are processed.
+*  **No global dat_list.txt** — each `dat/<branch>/` gets its own `dat_list.txt`.
+*  **Pathlib only** — platform-independent path handling.
+*  **Safe Windows launch** — guarded by ``if __name__ == "__main__"``.
 """
 
 from pathlib import Path
-from math import ceil
 import multiprocessing as mp
 import logging
 from functools import partial
@@ -23,9 +20,7 @@ from obspy import read
 from tqdm import tqdm
 
 
-# -----------------------------------------------------------------------------
-# helpers
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- helpers
 def _split_ccf_trace(
     data: np.ndarray, dt: float
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -38,53 +33,45 @@ def _split_ccf_trace(
 
     neg = data[:half][::-1]
     pos = data[half:]
-
     t = np.arange(pos.size) * dt
     return t, neg, pos
 
 
-# -----------------------------------------------------------------------------
-# pair enumeration
-# -----------------------------------------------------------------------------
-
-
-# -----------------------------------------------------------------------------
-# pair enumeration
-# -----------------------------------------------------------------------------
-
-
+# ------------------------------------------------------------------- SAC → DAT pair generator
 def gen_sac_dat_pairs(output_dir: Path, *, skip_self: bool = False):
-    """Yield ``(sac_path, dat_path)`` tuples for every processing branch found."""
+    """Yield (sac_path, dat_path) tuples for every processing branch.
 
+    If at least one branch name contains 'rtz' (case-insensitive),
+    only those branches are processed.
+    """
     stack_root = output_dir / "stack"
-    global_dat_root = output_dir / "dat"
+    dat_root = output_dir / "dat"
 
-    for proc_dir in stack_root.iterdir():
-        if not proc_dir.is_dir() or proc_dir.name.endswith("_dat"):
-            continue  # skip non‑dirs & legacy *_dat dirs
+    # collect first-level branch dirs
+    branches = [d for d in stack_root.iterdir() if d.is_dir()]
+    rtz_branches = [d for d in branches if "rtz" in d.name.lower()]
+    if rtz_branches:  # prefer *rtz* dirs if present
+        branches = rtz_branches
 
-        dat_root = global_dat_root / proc_dir.name  # <out>/dat/<process>
+    for proc_dir in branches:
+        branch_dat_root = dat_root / proc_dir.name  # <out>/dat/<branch>
 
         for sac_path in proc_dir.rglob("*.sac"):
             if skip_self:
-                sta_pair = sac_path.stem.split(".")[0]
+                sta_pair = sac_path.stem.split(".")[1]
                 if "-" in sta_pair:
                     sta1, sta2 = sta_pair.split("-", 1)
                     if sta1 == sta2:
                         continue
 
             rel = sac_path.relative_to(proc_dir)
-            dat_path = dat_root / rel.with_suffix(f".{proc_dir.name}.dat")
+            dat_path = branch_dat_root / rel.with_suffix(".dat")
             dat_path.parent.mkdir(parents=True, exist_ok=True)
             yield sac_path, dat_path
 
 
-# -----------------------------------------------------------------------------
-# conversion worker
-# -----------------------------------------------------------------------------
-
-
-def sac_to_dat(pair):  # path typing omitted for speed in Pool
+# ----------------------------------------------------------------------------- conversion worker
+def sac_to_dat(pair):  # path typing omitted for Pool speed
     """Convert a single SAC file to DAT format."""
     sac_path, dat_path = pair
 
@@ -95,7 +82,6 @@ def sac_to_dat(pair):  # path typing omitted for speed in Pool
         return
 
     dt = tr.stats.delta
-    npts = tr.stats.npts
 
     try:
         sac_hdr = tr.stats.sac
@@ -104,7 +90,7 @@ def sac_to_dat(pair):  # path typing omitted for speed in Pool
         evel = 0.0
         stel = 0.0
     except AttributeError:
-        logging.warning("Missing SAC header(s) in %s – skipped", sac_path)
+        logging.warning("Missing SAC header(s) in %s - skipped", sac_path)
         return
 
     t, neg, pos = _split_ccf_trace(tr.data.astype(float), dt)
@@ -120,36 +106,32 @@ def _update_progress(_: None, bar: tqdm):
     bar.update()
 
 
-# -----------------------------------------------------------------------------
-# list writers
-# -----------------------------------------------------------------------------
-
-
+# --------------------------------------------------------------------------- list writers
 def build_dat_lists(output_dir: Path):
-    """Write per-branch and global DAT lists (excludes self‑correlations)."""
+    """Write per-branch dat_list.txt (excludes self-correlations)."""
 
-    main_list = (output_dir / "dat_list.txt").open("w")
+    dat_root = output_dir / "dat"
 
-    for dat_dir in (output_dir / "stack").glob("*_dat"):
-        list_file = dat_dir / "dat_list.txt"
+    # pick branches with same 'rtz-only' rule as gen_sac_dat_pairs
+    branches = [d for d in dat_root.iterdir() if d.is_dir()]
+    rtz_branches = [d for d in branches if "rtz" in d.name.lower()]
+    if rtz_branches:
+        branches = rtz_branches
+
+    for branch_dir in branches:
+        list_file = branch_dir / "dat_list.txt"
         with list_file.open("w") as lf:
-            for dat_path in dat_dir.rglob("*.dat"):
-                sta_pair = dat_path.stem.split(".")[0]
+            for dat_path in branch_dir.rglob("*.dat"):
+                sta_pair = dat_path.stem.split(".")[1]
                 if "-" in sta_pair:
                     sta1, sta2 = sta_pair.split("-", 1)
-                    if sta1 == sta2:
+                    if sta1 == sta2:  # skip self-correlations
                         continue
-
-                rel = dat_path.relative_to(output_dir)
+                rel = dat_path.relative_to(branch_dir)  # path relative to branch root
                 lf.write(f"{rel}\n")
-                main_list.write(f"{rel}\n")
-
-    main_list.close()
 
 
-# -----------------------------------------------------------------------------
-# public API
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------- public API
 def sac2dat_deployer(xc_param: dict):
     """Entry point - run the whole conversion pipeline."""
 
@@ -172,3 +154,18 @@ def sac2dat_deployer(xc_param: dict):
     bar.close()
 
     build_dat_lists(output_dir)
+
+
+# --------------------------------------------------------------------------- CLI launcher
+if __name__ == "__main__":
+    import json
+    import sys
+
+    if len(sys.argv) != 2 or not Path(sys.argv[1]).is_file():
+        print("Usage: python sac2dat.py <xc_param.json>")
+        sys.exit(1)
+
+    with open(sys.argv[1], "r") as f:
+        params = json.load(f)
+
+    sac2dat_deployer(params)

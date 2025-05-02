@@ -2,42 +2,38 @@
 #define __ARG_PROC_H
 
 #include <getopt.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
+#include <math.h>
 
 #define MAX_GPU_COUNT 100
 
 typedef struct ARGUTYPE
 {
+  /* 文件与参数 */
   char *src_lst_path; /* -A */
   char *sta_lst_path; /* -B */
   char *ncf_dir;      /* -O */
-  float cclength;     /* -C */
+  float cclength;     /* -C seconds */
 
-  /* 原先的单一 max_distance 替换为 distmin/distmax */
-  float distmin;
-  float distmax;
+  float distmin, distmax; /* -D km */
+  float azmin, azmax;     /* -Z deg */
 
-  /* 新增的方位角范围 */
-  float azmin;
-  float azmax;
+  char *srcinfo_file; /* -S <file>  —— **恢复** */
 
-  /* 新增：源信息文件 */
-  char *srcinfo_file; /* -S */
+  /* 运行环境 */
+  size_t gpu_id;       /* -G */
+  size_t queue_id;     /* -Q */
+  size_t gpu_task_num; /* -U */
+  size_t cpu_count;    /* -T */
 
-  /* GPU/CPU 以及新的 queue_id */
-  size_t gpu_id;       /* -G: GPU ID */
-  size_t queue_id;     /* -Q: Queue ID，原先的 task_id 改名过来 */
-  size_t gpu_task_num; /* -U: 在单个 GPU 上部署的任务数 */
-  size_t cpu_count;    /* -T: 使用的 CPU 个数 */
-  int write_mode;      /* -M: 写模式(0=traditional, 1=append, 2=aggregate) */
-
+  int write_mode;   /* -M 0/1/2 */
+  int save_segment; /* -R : 1=输出分段，0=默认叠加+IFFT */
 } ARGUTYPE;
 
-void usage();
-void ArgumentProcess(int argc, char **argv, ARGUTYPE *pargument);
+void usage(void);
+void ArgumentProcess(int argc, char **argv, ARGUTYPE *parg);
 
 #endif
