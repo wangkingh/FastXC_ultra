@@ -20,8 +20,8 @@ void ArgumentProcess(int argc, char **argv, ARGUTYPE *parg)
   parg->queue_id = 0;
   parg->gpu_task_num = 1;
   parg->cpu_count = 1;
-  parg->write_mode = 1; /* 1: append; 2:aggregate */
-  parg->save_segment = 0;   /* 默认走叠加+IFFT,不保存每一段的结果 */
+  parg->write_mode = 1;   /* 1: append; 2:aggregate */
+  parg->save_segment = 0; /* 默认走叠加+IFFT,不保存每一段的结果 */
 
   if (argc <= 1)
   {
