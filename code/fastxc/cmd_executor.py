@@ -2,6 +2,7 @@ import subprocess
 from logging.handlers import RotatingFileHandler
 from tqdm import tqdm
 from queue import Queue, Empty
+from collections import deque          # 顶部 import
 from typing import Dict, List, Tuple
 import threading
 import logging
@@ -103,7 +104,13 @@ class MultiDeviceTaskExecutor:
         # 2) Create the global task queue (store all tasks)
         self.global_task_queue = Queue()
 
+        
         # 3) Create the sub_queue, store tasks for each (device_type, device_id, worker_id)
+        self._rr_keys = deque()         # ← 新增
+        # DEBUG 2015-05-03 给与不同GPU上的worker_id不同的名字，即使是同
+        self.worker_gid_map = {}   # ➊
+        ##############################################################
+        
         self.sub_queue = self._create_sub_queue()
 
         # 4) Attributes to manage the threads and tasks
@@ -126,6 +133,8 @@ class MultiDeviceTaskExecutor:
         self.success_count = 0
         self.failure_count = 0
         self.counter_lock = threading.Lock()
+        
+
 
     # ------------------ Simplified constructor: only GPU ------------------
     @classmethod
@@ -205,17 +214,18 @@ class MultiDeviceTaskExecutor:
         return logger
 
     # 2) Build sub_queues
-    def _create_sub_queue(self) -> Dict[Tuple[str, int, int], Queue]:
-        """_summary_
-        create a sub_queue for each (GPU & worker_id) pair
-        """
+    def _create_sub_queue(self):
         sub_queues = {}
+        gid_counter = 0                     # ➋
+
         for device_type, device_dict in self.devices_config.items():
             for dev_id, worker_num in device_dict.items():
                 for worker_id in range(worker_num):
-                    sub_queues[(device_type, dev_id, worker_id)] = Queue(
-                        maxsize=self.queue_size
-                    )
+                    key = (device_type, dev_id, worker_id)
+                    sub_queues[key] = Queue(maxsize=self.queue_size)
+                    self._rr_keys.append(key)
+                    self.worker_gid_map[key] = gid_counter
+                    gid_counter += 1
         return sub_queues
 
     # 3) set the command list
@@ -273,33 +283,26 @@ class MultiDeviceTaskExecutor:
 
     # --------------- Internal Methods ---------------
     def _dispatcher(self):
-        """_summary_
-        Continuously pop task s from global_task_queue and put them
-        into any sub_queue that is not full. If all are full, wair briefly.
-        """
         while True:
             try:
                 cmd, retry = self.global_task_queue.get(timeout=1)
             except Empty:
                 if self.global_task_queue.empty():
                     break
-                else:
-                    continue
+                continue
 
-            cmd_placed = False
-            # Attempt to put the task into a non-full sub_queue
-            for (_, _, _), sub_queue in self.sub_queue.items():
-                if not sub_queue.full():
-                    sub_queue.put((cmd, retry))
-                    cmd_placed = True
+            for _ in range(len(self._rr_keys)):
+                key = self._rr_keys[0]
+                sub_q = self.sub_queue[key]
+                self._rr_keys.rotate(-1)
+                if not sub_q.full():
+                    sub_q.put((cmd, retry))
+                    self.global_task_queue.task_done()   # 成功转移 −1
                     break
-
-            if not cmd_placed:
-                # if all sub_queues are full, wait briefly
+            else:
                 time.sleep(1)
-                self.global_task_queue.put((cmd, retry))
-
-            self.global_task_queue.task_done()
+                self.global_task_queue.put((cmd, retry)) # 放回 +1
+                self.global_task_queue.task_done()       # 再 −1，计数归位
 
     # --------------- Internal Methods: Sub Worker ---------------
     def _sub_worker_thread_fn(
@@ -354,7 +357,9 @@ class MultiDeviceTaskExecutor:
         if device_type.lower() == "gpu":
             if self.build_type == "with_worker_id":
                 # e.g. add -G 0/1
-                return f"{cmd} -G {dev_id} -U {concurrency} -Q {worker_id}"
+                gid = self.worker_gid_map[(device_type, dev_id, worker_id)]
+                return f"{cmd} -G {dev_id} -U {concurrency} -Q {gid}"
+
             elif self.build_type == "no_worker_id":
                 # e.g. add -G 0
                 return f"{cmd} -G {dev_id}"
@@ -384,9 +389,9 @@ class MultiDeviceTaskExecutor:
                 stderr=subprocess.PIPE,  # stderr=subprocess.DEVNULL,
                 text=True,
             )
-            # if result.stdout:
+            #if result.stdout:
             #     self.logger.info(result.stdout.strip())
-            # if result.stderr:
+            #if result.stderr:
             #     self.logger.error(result.stderr.strip())
 
             if result.returncode != 0:

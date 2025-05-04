@@ -1,0 +1,5 @@
+# ===== build / cache artifacts =====
+*.o
+*.pyc
+code/bin/
+**/__pycache__/
