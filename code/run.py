@@ -9,7 +9,7 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    config_path = "./config/test_c1.ini"
+    config_path = "./config/test_c3.ini"
     pipeline = FastXCPipeline(config_path)
 
     # 比如想让:

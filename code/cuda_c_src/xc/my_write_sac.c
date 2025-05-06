@@ -328,10 +328,12 @@ static int aggregate_write_sac(const char *name, SACHEAD hd, const float *ar)
 int my_write_sac(const char *name, SACHEAD hd, const float *ar, int write_mode)
 {
     // display write mode
-    printf("Write mode: %d\n", write_mode);
+    // printf("Write mode: %d\n", write_mode);
     switch (write_mode)
     {
     case MODE_APPEND:
+        // print name
+        printf("file name is %s\n", name);
         return append_write_sac(name, hd, ar);
     case MODE_AGGREGATE:
         return aggregate_write_sac(name, hd, ar);

@@ -285,7 +285,16 @@ int main(int argc, char **argv)
 
   // 线程池（读文件、写文件）
   ThreadPoolRead *read_pool = create_threadpool_read(cpu_thread_count);
-  ThreadWritePool *write_pool = create_threadwrite_pool(cpu_thread_count);
+  ThreadWritePool *pool_plain = NULL;
+  ThreadWriteStepPool *pool_step = NULL;
+  if (save_segment == 0)
+  {
+    pool_plain = create_threadwrite_pool(cpu_thread_count);
+  }
+  else
+  {
+    pool_step = create_write_step_pool(cpu_thread_count * gpu_task_count);
+  }
 
   // 用于判断是否需要重新读源/台数据
   size_t src_start_flag = 0;
@@ -450,7 +459,7 @@ int main(int argc, char **argv)
                            ncf_directory,
                            queue_id,
                            write_mode,
-                           write_pool);
+                           pool_plain);
     }
     else
     {
@@ -459,15 +468,10 @@ int main(int argc, char **argv)
 
       for (size_t step_idx = 0; step_idx < (size_t)num_steps; ++step_idx)
       {
-        /* 1. 从 d_crosscor_buffer 拷出本 step 的频谱到 d_crosscor_stack */
-        copyStepKernel<<<dimGrid_2D, dimBlock_2D>>>(
-            d_crosscor_buffer, /* src  */
-            d_crosscor_stack,  /* dst  */
-            node_count,
-            num_frequency_points,
-            step_idx,
-            num_steps);
-
+        CUDACHECK(cudaMemcpy2D(d_crosscor_stack, num_frequency_points * sizeof(cuComplex),
+                               d_crosscor_buffer + step_idx * num_frequency_points, num_frequency_points * sizeof(cuComplex) * num_steps,
+                               num_frequency_points, node_count,
+                               cudaMemcpyDeviceToDevice));
         /* 2. 相移 */
         applyPhaseShiftKernel<<<dimGrid_2D, dimBlock_2D>>>(
             d_crosscor_stack,
@@ -510,14 +514,15 @@ int main(int argc, char **argv)
                                   queue_id,
                                   write_mode,
                                   step_idx, /* 当前 step */
-                                  write_pool);
+                                  pool_step);
       } /* for step */
     }
   }
 
   // 销毁线程池
   destroy_threadpool_read(read_pool);
-  destroy_threadwrite_pool(write_pool);
+  destroy_threadwrite_pool(pool_plain);
+  destroy_write_step_pool(pool_step);
 
   for (int idx = 0; idx < num_pair_managers; idx++)
   {

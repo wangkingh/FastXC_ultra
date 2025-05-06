@@ -356,7 +356,6 @@ class MultiDeviceTaskExecutor:
         concurrency = self.devices_config[device_type][dev_id]
         if device_type.lower() == "gpu":
             if self.build_type == "with_worker_id":
-                # e.g. add -G 0/1
                 gid = self.worker_gid_map[(device_type, dev_id, worker_id)]
                 return f"{cmd} -G {dev_id} -U {concurrency} -Q {gid}"
 
