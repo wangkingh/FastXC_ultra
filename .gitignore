@@ -3,3 +3,5 @@
 *.pyc
 code/bin/
 **/__pycache__/
+*.o
+*.pyc
