@@ -5,3 +5,7 @@ code/bin/
 **/__pycache__/
 *.o
 *.pyc
+.vscode
+
+# Ignore local VS Code settings
+.vscode/
