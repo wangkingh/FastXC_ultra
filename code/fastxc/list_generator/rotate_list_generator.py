@@ -38,41 +38,45 @@ def _gen_rotate_list(
 
         rotate_list/<label>/<sta_pair>/{enz_list.txt, rtz_list.txt}
     """
-    rtz_ncf_dir   = output_dir / "stack" / f"rtz_{label}"
-    rotate_root   = output_dir / "rotate_list" / label
-    mapping       = {c: ch for c, ch in zip(comp1, "ENZ")}
-    mapping.update({c: ch for c, ch in zip(comp2, "ENZ")})
+    if comp2 == []:
+        comp2 = comp1
+    if len(comp1) != 3 or len(comp2) != 3:
+        log.error("Component list must be of length 3.")
 
-    ENZ_order = [
-        "E-E", "E-N", "E-Z",
-        "N-E", "N-N", "N-Z",
-        "Z-E", "Z-N", "Z-Z",
-    ]
+    labels1 = list("ENZ")          # 第 0/1/2 个 → E/N/Z
+    labels2 = list("ENZ")
+    ENZ_order = [f"{a}-{b}" for a in labels1 for b in labels2]
+
     RTZ_order = [
         "R-R", "R-T", "R-Z",
         "T-R", "T-T", "T-Z",
         "Z-R", "Z-T", "Z-Z",
     ]
+        
+    rtz_ncf_dir   = output_dir / "stack" / f"rtz_{label}"
+    rotate_root   = output_dir / "rotate_list" / label
 
-    for sta_pair_dir in enz_dir.iterdir():
-        if not sta_pair_dir.is_dir():
+    POS2CHR = ("E", "N", "Z")
+    for net_sta_pair_dir in enz_dir.iterdir():
+        if not net_sta_pair_dir.is_dir():
             continue
 
-        sta_pair = sta_pair_dir.name
-        if sum(1 for _ in sta_pair_dir.iterdir()) != 9:
+        net_sta_pair = net_sta_pair_dir.name
+        if sum(1 for _ in net_sta_pair_dir.iterdir()) != 9:
             # 不是 9 个分量 → 跳过
             continue
 
         # ---------- 构造 ENZ 路径字典 -------------------------------- #
         enz_group: dict[str, str] = {}
-        for c1, c2 in product(comp1, comp2):
-            tag = f"{mapping[c1]}-{mapping[c2]}"
-            fname = f"{sta_pair}.{c1}-{c2}.{label}.sac"
-            enz_path = sta_pair_dir / fname
-            enz_group[tag] = str(enz_path)
+        for i, c1 in enumerate(comp1):         # 外层：comp1 的顺序
+            for j, c2 in enumerate(comp2):     # 内层：comp2 的顺序
+                tag   = f"{POS2CHR[i]}-{POS2CHR[j]}"
+                fname = f"{net_sta_pair}.{c1}-{c2}.{label}.sac"
+                enz_path = net_sta_pair_dir / fname
+                enz_group[tag] = str(enz_path)  # 写入字典
 
         # ---------- 输出文件 ---------------------------------------- #
-        rotate_dir = rotate_root / sta_pair
+        rotate_dir = rotate_root / net_sta_pair
         rotate_dir.mkdir(parents=True, exist_ok=True)
 
         in_list  = rotate_dir / "enz_list.txt"
@@ -86,7 +90,7 @@ def _gen_rotate_list(
         # out_list
         with out_list.open("w") as fp:
             for tag in RTZ_order:
-                out_path = rtz_ncf_dir / sta_pair / f"{sta_pair}.{tag}.ncf.sac"
+                out_path = rtz_ncf_dir / net_sta_pair / f"{net_sta_pair}.{tag}.sac"
                 fp.write(str(out_path) + "\n")
 
 
