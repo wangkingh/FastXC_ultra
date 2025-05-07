@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: UTF-8 -*-
 import logging
 from fastxc import FastXCPipeline, StepMode
 
@@ -9,9 +9,9 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    config_path = "./config/test_c3.ini"
+    config_path = "./config/bht.ini"
     pipeline = FastXCPipeline(config_path)
-
+    
     # 比如想让:
     #  - GenerateFilter: 全部执行(默认)
     #  - OrganizeSAC: 只生成必要文件，不执行(其实它也没有"执行"概念，这里只是演示)
@@ -28,12 +28,12 @@ if __name__ == "__main__":
     steps_config = {
         "GenerateFilter": StepMode.ALL,
         "OrganizeSAC": StepMode.ALL,
-        "Sac2Spec": StepMode.ALL,
-        "CrossCorrelation": StepMode.ALL,
-        "ConcatenateNcf": StepMode.ALL,
-        "Stack": StepMode.ALL,
-        "Rotate": StepMode.ALL,
-        "Sac2Dat": StepMode.ALL,
+        "Sac2Spec": StepMode.CMD_ONLY,
+        "CrossCorrelation": StepMode.SKIP,
+        "ConcatenateNcf": StepMode.SKIP,
+        "Stack": StepMode.SKIP,
+        "Rotate": StepMode.SKIP,
+        "Sac2Dat": StepMode.SKIP,
     }
 
     pipeline.run(steps_config)

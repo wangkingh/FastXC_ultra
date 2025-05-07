@@ -1,4 +1,5 @@
 # fastxc/main.py
+# -*- coding: UTF-8 -*-
 import os
 from pathlib import Path
 import shutil

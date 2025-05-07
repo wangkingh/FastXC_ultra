@@ -109,20 +109,20 @@ size_t EstimateGpuBatch(size_t gpu_id, int npts, int nseg, int nstep, int num_ch
         reqram = fixed_size + batch * unitgpuram;
         // cuFFT memory usage for data fft forward
         cufftEstimateMany(rank, n, inembed, istride, idist, onembed, ostride,
-                          odist, CUFFT_R2C, batch, &tmpram);
+                          odist, CUFFT_R2C, num_ch * batch, &tmpram);
         reqram += tmpram;
         // cuFFT memory usage for data fft inverse
         cufftEstimateMany(rank, n, inembed, istride, idist, onembed, ostride,
-                          odist, CUFFT_C2R, batch, &tmpram);
+                          odist, CUFFT_C2R, num_ch * batch, &tmpram);
         reqram += tmpram;
 
         // cuFFT memory usage for zero padding data fft forward
         cufftEstimateMany(rank_2x, n_2x, inembed_2x, istride_2x, idist_2x, onembed_2x, ostride_2x,
-                          odist_2x, CUFFT_R2C, batch, &tmpram);
+                          odist_2x, CUFFT_R2C, num_ch * batch, &tmpram);
         reqram += tmpram;
 
         cufftEstimateMany(rank_2x, n_2x, inembed_2x, istride_2x, idist_2x, onembed_2x, ostride_2x,
-                          odist_2x, CUFFT_C2R, batch, &tmpram);
+                          odist_2x, CUFFT_C2R, num_ch * batch, &tmpram);
 
         reqram += tmpram;
 
@@ -161,33 +161,6 @@ void AllocateGpuMemory(int batch, int nseg, int num_ch, int do_runabs, int wh_fl
 {
     int nseg_2x = nseg * 2;
 
-    // Variables for processing segment data
-    cudaMalloc((void **)d_sacdata, num_ch * batch * nseg * sizeof(float));
-    cudaMalloc((void **)d_spectrum, num_ch * batch * nseg * sizeof(cuComplex));
-
-    cudaMalloc((void **)d_sacdata_2x, num_ch * batch * nseg_2x * sizeof(float));
-    cudaMalloc((void **)d_spectrum_2x, num_ch * batch * nseg_2x * sizeof(cuComplex));
-
-    cudaMalloc((void **)d_filter_responses, filterCount * nseg_2x * sizeof(cuComplex));
-    cudaMalloc((void **)d_sum, num_ch * batch * sizeof(double));
-    cudaMalloc((void **)d_isum, num_ch * batch * sizeof(double));
-
-    // if whiten, allocate memory for weight and tmp, same size as segment data
-    if (!do_runabs && wh_flag)
-    {
-        cudaMalloc((void **)d_weight, batch * nseg * sizeof(float));
-        cudaMalloc((void **)d_tmp_weight, batch * nseg * sizeof(float));
-        cudaMalloc((void **)d_tmp, batch * nseg * sizeof(float));
-    } // if runabs, allocate memory for filterd sac and spec
-    else if (do_runabs)
-    {
-        cudaMalloc((void **)d_filtered_sacdata, num_ch * batch * nseg * sizeof(float));
-        cudaMalloc((void **)d_total_sacdata, num_ch * batch * nseg * sizeof(float));
-        cudaMalloc((void **)d_weight, batch * nseg * sizeof(float));
-        cudaMalloc((void **)d_tmp_weight, batch * nseg * sizeof(float));
-        cudaMalloc((void **)d_tmp, batch * nseg * sizeof(float));
-    }
-
     // set up cufft plans
     int rank = 1;
     int n[1] = {nseg};
@@ -198,10 +171,10 @@ void AllocateGpuMemory(int batch, int nseg, int num_ch, int do_runabs, int wh_fl
     int ostride = 1;
     int odist = nseg;
 
-    cufftPlanMany(planfwd, 1, n, inembed, istride, idist, onembed,
-                  ostride, odist, CUFFT_R2C, num_ch * batch);
-    cufftPlanMany(planinv, rank, n, inembed, istride, idist,
-                  onembed, ostride, odist, CUFFT_C2R, num_ch * batch);
+    CUFFTCHECK(cufftPlanMany(planfwd, 1, n, inembed, istride, idist, onembed,
+                             ostride, odist, CUFFT_R2C, num_ch * batch));
+    CUFFTCHECK(cufftPlanMany(planinv, rank, n, inembed, istride, idist,
+                             onembed, ostride, odist, CUFFT_C2R, num_ch * batch));
 
     // set up cufft plans for zero-padding, both forward and inverse
     int rank_2x = 1;
@@ -212,9 +185,37 @@ void AllocateGpuMemory(int batch, int nseg, int num_ch, int do_runabs, int wh_fl
     int idist_2x = nseg_2x;
     int ostride_2x = 1;
     int odist_2x = nseg_2x;
+    // print num_ch
+    printf("num_ch: %d\n", num_ch);
+    CUFFTCHECK(cufftPlanMany(planfwd_2x, rank_2x, n_2x, inembed_2x, istride_2x, idist_2x, onembed_2x,
+                             ostride_2x, odist_2x, CUFFT_R2C, num_ch * batch));
+    CUFFTCHECK(cufftPlanMany(planinv_2x, rank_2x, n_2x, inembed_2x, istride_2x, idist_2x, onembed_2x,
+                             ostride_2x, odist_2x, CUFFT_C2R, num_ch * batch));
 
-    cufftPlanMany(planfwd_2x, rank_2x, n_2x, inembed_2x, istride_2x, idist_2x, onembed_2x,
-                  ostride_2x, odist_2x, CUFFT_R2C, num_ch * batch);
-    cufftPlanMany(planinv_2x, rank_2x, n_2x, inembed_2x, istride_2x, idist_2x, onembed_2x,
-                  ostride_2x, odist_2x, CUFFT_C2R, num_ch * batch);
+    // Variables for processing segment data
+    CUDACHECK(cudaMalloc((void **)d_sacdata, num_ch * batch * nseg * sizeof(float)));
+    CUDACHECK(cudaMalloc((void **)d_spectrum, num_ch * batch * nseg * sizeof(cuComplex)));
+
+    CUDACHECK(cudaMalloc((void **)d_sacdata_2x, num_ch * batch * nseg_2x * sizeof(float)));
+    CUDACHECK(cudaMalloc((void **)d_spectrum_2x, num_ch * batch * nseg_2x * sizeof(cuComplex)));
+
+    CUDACHECK(cudaMalloc((void **)d_filter_responses, filterCount * nseg_2x * sizeof(cuComplex)));
+    CUDACHECK(cudaMalloc((void **)d_sum, num_ch * batch * sizeof(double)));
+    CUDACHECK(cudaMalloc((void **)d_isum, num_ch * batch * sizeof(double)));
+
+    // if whiten, allocate memory for weight and tmp, same size as segment data
+    if (!do_runabs && wh_flag)
+    {
+        CUDACHECK(cudaMalloc((void **)d_weight, batch * nseg * sizeof(float)));
+        CUDACHECK(cudaMalloc((void **)d_tmp_weight, batch * nseg * sizeof(float)));
+        CUDACHECK(cudaMalloc((void **)d_tmp, batch * nseg * sizeof(float)));
+    } // if runabs, allocate memory for filterd sac and spec
+    else if (do_runabs)
+    {
+        CUDACHECK(cudaMalloc((void **)d_filtered_sacdata, num_ch * batch * nseg * sizeof(float)));
+        CUDACHECK(cudaMalloc((void **)d_total_sacdata, num_ch * batch * nseg * sizeof(float)));
+        CUDACHECK(cudaMalloc((void **)d_weight, batch * nseg * sizeof(float)));
+        CUDACHECK(cudaMalloc((void **)d_tmp_weight, batch * nseg * sizeof(float)));
+        CUDACHECK(cudaMalloc((void **)d_tmp, batch * nseg * sizeof(float)));
+    }
 }

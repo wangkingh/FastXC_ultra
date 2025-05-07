@@ -1,11 +1,12 @@
 # Compiler & Architecture
-# CC=gcc
-# NVCC=/usr/local/cuda/bin/nvcc
-# ARCH = sm_80
+CC   ?= gcc                     # 如果环境里有 CC 就用环境变量，否则默认 gcc
+NVCC ?= /usr/local/cuda/bin/nvcc
+ARCH ?= sm_80
 
 # compiler flags
 CFLAGS=-Wall -O0 -g
-NVCCFLAGS = -g -G -arch=$(ARCH)
+# NVCCFLAGS = -g -G -arch=$(ARCH)
+NVCCFLAGS = -O3 -arch=$(ARCH)
 
 
 # linker flags

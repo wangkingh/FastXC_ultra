@@ -1,6 +1,6 @@
 export CC = gcc
 export NVCC = /usr/local/cuda/bin/nvcc
-export ARCH = sm_89
+export ARCH = sm_80
 
 SUBDIRS = sac2spec_stable sac2spec_ultra xc rotate ncf_pws
 
