@@ -1,50 +1,75 @@
-# Compiler & archetecture
-# CC=gcc
-# NVCC=/usr/local/cuda/bin/nvcc
-# ARCH = sm_89
+# ----------------------------------------------------
+#  xc_fast ‒ 子目录 Makefile（Release / Debug 自动切换）
+# ----------------------------------------------------
 
-# compiler flags
-CFLAGS=-Wall -O0 -g
-NVCCFLAGS = -g -G -arch=$(ARCH)
+# ---------- 编译器 ----------
+CC        ?= gcc
+NVCC      ?= /usr/local/cuda/bin/nvcc
+ARCH      ?= sm_80
+WARN      ?= -Wall
 
-# linker flags
-LFLAG=-L/usr/local/cuda/lib64  -lcufft -lcudart -lm
+# -------- 优化级别自动切换 --------
+ifeq ($(MAKELEVEL),0)           # 手动单目录编译 → Debug
+    CFLAGS     ?= -O0 -g $(WARN)
+    NVCCFLAGS  ?= -g -G -lineinfo -arch=$(ARCH)
+else                            # 顶层批量构建 → Release
+    CFLAGS     ?= -O3 $(WARN)
+    NVCCFLAGS  ?= -O3 --generate-line-info -arch=$(ARCH)
+endif
+# ---------------------------------
 
-CUDAOBJS=cuda.main.o \
-		cuda.xc_dual.o \
-		cuda.util.o
+# ---------- 链接库 ----------
+LFLAG = -L/usr/local/cuda/lib64 -lcufft -lcudart -lm
 
-OBJS=arguproc.o \
-	sacio.o \
-	cal_dist.o \
-	gen_ccfpath.o \
-	par_read_spec.o \
-	par_write_sac.o \
-	par_write_step.o \
-	par_filter_nodes.o \
-	my_write_sac.o \
-	read_segspec.o \
-	read_spec_lst.o \
-	util.o
-	
-BINDIR=../../bin
-PROG=$(BINDIR)/xc_fast
+# ---------- 源文件 ----------
+CUDAOBJS = \
+    cuda.main.o \
+    cuda.xc_dual.o \
+    cuda.util.o
 
+OBJS = \
+    arguproc.o \
+    sacio.o \
+    cal_dist.o \
+    gen_ccfpath.o \
+    par_read_spec.o \
+    par_write_sac.o \
+    par_write_step.o \
+    par_filter_nodes.o \
+    my_write_sac.o \
+    read_segspec.o \
+    read_spec_lst.o \
+    util.o
+
+# ---------- 目标可执行文件 ----------
+BINDIR := ../../bin
+PROG   := $(BINDIR)/xc_fast
+
+# ---------- 伪目标 ----------
+.PHONY: all clean veryclean
+
+# ---------- 默认目标 ----------
 all: $(BINDIR) $(PROG)
 
+# ---------- 创建输出目录 ----------
 $(BINDIR):
-	mkdir -p $(BINDIR)
+	@mkdir -p $@
 
-$(PROG):$(OBJS) $(CUDAOBJS)
+# ---------- 链接 ----------
+$(PROG): $(OBJS) $(CUDAOBJS)
 	$(NVCC) $(NVCCFLAGS) -o $@ $^ $(LFLAG)
 
+# ---------- C 源编译 ----------
 %.o: %.c
-	$(CC) $(CFLAG) -c $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
+# ---------- CUDA 源编译 ----------
 %.o: %.cu
-	$(NVCC) $(NVCCFLAGS) -c $< 
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
+# ---------- 清理 ----------
 clean:
-	-rm *.o
-veryclean:
-	-rm $(PROG) *.o 
+	@rm -f *.o
+
+veryclean: clean
+	@rm -f $(PROG)
