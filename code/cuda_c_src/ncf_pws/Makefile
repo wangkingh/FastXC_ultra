@@ -5,7 +5,7 @@
 # ---------- 编译器 ----------
 CC        ?= gcc
 NVCC      ?= /usr/local/cuda/bin/nvcc
-ARCH      ?= sm_80
+ARCH      ?= sm_89
 WARN      ?= -Wall
 
 # ---------- 通用宏 ----------
@@ -15,7 +15,7 @@ CINCLUDE  := -I/usr/local/cuda/include
 # -------- 优化级别自动切换 --------
 ifeq ($(MAKELEVEL),0)           # 手动单目录编译 → Debug
     CFLAGS     ?= -O0 -g $(WARN) $(BITS64) $(CINCLUDE)
-    NVCCFLAGS  ?= -g -G -lineinfo -arch=$(ARCH) -Xcompiler "$(BITS64)" $(CINCLUDE)
+    NVCCFLAGS  ?= -g -O0 -lineinfo -arch=$(ARCH) -Xcompiler "$(BITS64)" $(CINCLUDE)
 else                            # 顶层批量构建 → Release
     CFLAGS     ?= -O3 $(WARN) $(BITS64) $(CINCLUDE)
     NVCCFLAGS  ?= -O3 --generate-line-info -arch=$(ARCH) -Xcompiler "$(BITS64)" $(CINCLUDE)

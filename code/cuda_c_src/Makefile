@@ -9,7 +9,7 @@
 # ---------- 编译器 ----------
 CC        ?= gcc
 NVCC      ?= /usr/local/cuda/bin/nvcc
-ARCH      ?= sm_80
+ARCH      ?= sm_89
 
 # ---------- Release / Debug ----------
 CFLAGS        ?= -O3 -Wall
@@ -24,6 +24,11 @@ export CFLAGS NVCCFLAGS
 
 # ---------- 并行 / 串行 开关 ----------
 MODE ?= par            # par (默认) | seq
+# 防呆检查：MODE 只能是 par 或 seq
+ifeq ($(filter $(MODE),par seq),)
+  $(error MODE must be par or seq, got '$(MODE)')
+endif
+
 ifeq ($(MODE),par)
   PARFLAG = -j         # 并行
 else
@@ -81,3 +86,4 @@ help: ## Show this help
 	@awk 'BEGIN{FS=":.*##"; printf "\nUsage:  make \033[36m<TARGET>\033[0m [MODE=par|seq]\n\nTargets:\n"} \
 	     /^[a-zA-Z0-9_-]+:[^#]*##/{printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}' \
 	     $(MAKEFILE_LIST)
+

@@ -32,7 +32,7 @@ int main(int argc, char **argv)
     int save_tfpws = argument.save_tfpws;
     int gpu_task_num = argument.gpu_task_num;
     int sub_stack_size = argument.sub_stack_size;
-    char *src_info_file = argument.src_info_file; /* 新增：源信息过滤文件，可能为 NULL */
+    // char *src_info_file = argument.src_info_file; /* 新增：源信息过滤文件，可能为 NULL */
 
     // 分配写出文件名字符串的空间
     char src_file_name[MAXNAME];
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
     if (save_linear == 1)
     {
         snprintf(ccf_dir, sizeof(ccf_dir), "%s/linear/%s.%s/", stack_dir, net_pair, sta_pair);
-        snprintf(ccf_name, MAXLINE, "%s.%s.%s.linear.sac", net_pair, sta_pair, cmp_pair);
+        snprintf(ccf_name, sizeof(ccf_name), "%s.%s.%s.linear.sac", net_pair, sta_pair, cmp_pair);
         CreateDir(ccf_dir);
         snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
         write_sac(ccf_path, ncf_hd, h_linear_stack); // 使用新的文件名写文件
@@ -260,7 +260,7 @@ int main(int argc, char **argv)
 
         float *pw_stack = (float *)malloc(nsamples * sizeof(float)); // 相位加权叠加结果
         CUDACHECK(cudaMemcpy(pw_stack, d_pw_stack, nsamples * sizeof(float), cudaMemcpyDeviceToHost));
-        snprintf(ccf_name, MAXLINE, "%s.%s.%s.pws.sac", net_pair, sta_pair, cmp_pair);
+        snprintf(ccf_name, sizeof(ccf_name), "%s.%s.%s.pws.sac", net_pair, sta_pair, cmp_pair);
         snprintf(ccf_dir, sizeof(ccf_dir), "%s/pws/%s.%s/", stack_dir, net_pair, sta_pair);
         snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
         CreateDir(ccf_dir);
@@ -446,7 +446,7 @@ int main(int argc, char **argv)
         float *tfpw_stack = (float *)malloc(nsamples * sizeof(float));
         CUDACHECK(cudaMemcpy(tfpw_stack, d_tfpw_stack,
                              nsamples * sizeof(float), cudaMemcpyDeviceToHost));
-        snprintf(ccf_name, MAXLINE, "%s.%s.%s.tfpws.sac", net_pair, sta_pair, cmp_pair);
+        snprintf(ccf_name, sizeof(ccf_name), "%s.%s.%s.tfpws.sac", net_pair, sta_pair, cmp_pair);
         snprintf(ccf_dir, sizeof(ccf_dir), "%s/tfpws/%s.%s/", stack_dir, net_pair, sta_pair);
         snprintf(ccf_path, 2 * MAXLINE, "%s/%s", ccf_dir, ccf_name);
         CreateDir(ccf_dir);

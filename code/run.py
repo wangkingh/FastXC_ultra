@@ -9,7 +9,7 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    config_path = "./config/bht.ini"
+    config_path = "./config/test_c3.ini"
     pipeline = FastXCPipeline(config_path)
     
     # 比如想让:
@@ -28,12 +28,12 @@ if __name__ == "__main__":
     steps_config = {
         "GenerateFilter": StepMode.ALL,
         "OrganizeSAC": StepMode.ALL,
-        "Sac2Spec": StepMode.CMD_ONLY,
-        "CrossCorrelation": StepMode.SKIP,
-        "ConcatenateNcf": StepMode.SKIP,
-        "Stack": StepMode.SKIP,
-        "Rotate": StepMode.SKIP,
-        "Sac2Dat": StepMode.SKIP,
+        "Sac2Spec": StepMode.ALL,
+        "CrossCorrelation": StepMode.ALL,
+        "ConcatenateNcf": StepMode.ALL,
+        "Stack": StepMode.ALL,
+        "Rotate": StepMode.ALL,
+        "Sac2Dat": StepMode.ALL,
     }
 
     pipeline.run(steps_config)

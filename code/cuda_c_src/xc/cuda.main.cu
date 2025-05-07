@@ -42,7 +42,7 @@ int main(int argc, char **argv)
   // 2. 取出结构体内的各字段
   float cc_length = cmd_args.cclength;
   char *ncf_directory = cmd_args.ncf_dir;
-  char *srcinfo_file = cmd_args.srcinfo_file;
+  // char *srcinfo_file = cmd_args.srcinfo_file;
   float dist_min = cmd_args.distmin;
   float dist_max = cmd_args.distmax;
   float az_min = cmd_args.azmin;
