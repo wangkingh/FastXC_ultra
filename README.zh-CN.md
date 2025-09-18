@@ -52,18 +52,14 @@ cd FastXC_ultra
 # 1. 编译 CUDA/C 可执行文件（必需）
 cd cuda_c_src && make veryclean && make    # 如需更改架构，编辑 Makefile 中 ARCH
 
-# 2. 配置 Python 环境（推荐）
-pip install -r requirements.txt            # 文件中列出经过测试的版本
-
-# 3. 生成模板配置（英文注释）
-python -m fastxc --generate-template
-
-# 4. 复制并修改模板（示例）
-cp template_config.ini my.ini
+# 2. 修改配置文件
 vim my.ini
 
-# 5. 运行完整流程（示例）
-python run.py -c my.ini
+# 3. 修改主控脚本 run.py
+vim run.py 修改配置文件路径
+
+# 4. 运行 run.py
+python run.py
 ```
 
 ### 架构提示
