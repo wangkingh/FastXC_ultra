@@ -17,14 +17,13 @@
   <img src="https://img.shields.io/github/last-commit/wangkingh/FastXC_ultra?logo=git" alt="last commit">
   <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA >=11.8">
 </p>
-
-
-<!-- Switch language / 切换语言: [简体中文](README.zh-CN.md) -->
-* Switch Language 切换语言: [English](README.md)[英文], [简体中文](README.zh-CN.md)[Simplified Chinese]
 ---
 
 # FastXC Ultra
 **High‑performance CPU‑GPU pipeline for single‑ and multi‑array ambient‑noise cross‑correlation (1‑ & 9‑component)**  
+
+<!-- Switch language / 切换语言: [简体中文](README.zh-CN.md) -->
+* Switch Language 切换语言: [English](README.md)[英文], [简体中文](README.zh-CN.md)[Simplified Chinese]
 
 FastXC Ultra coordinates **CUDA‑C kernels** with a **Python controller** to turn raw SAC waveforms into stacked Noise‑Correlation Functions (NCFs) **in minutes, not hours**.
 
@@ -53,18 +52,14 @@ cd FastXC_ultra
 # 1. Build CUDA/C executables (required)
 cd cuda_c_src && make veryclean && make    # edit ARCH in Makefile if needed
 
-# 2. Check Python env (not required)
-pip install -r requirements.txt            # see file for tested versions
+# 2. Check and modify the configuration file
+vim *.ini and set the paramters
 
-# 3. Generate a template config (English comments)
-python -m fastxc --generate-template
+# 3. Check and modify the master script run.py
+Check the path of the configuration file and set it appropriately
 
-# 4. Copy & edit the template, or paste the sample below (not required)
-cp template_config.ini my.ini
-vim my.ini
-
-# 5. Run the full pipeline (not required)
-python run.py -c my.ini
+# 5. Run the full pipeline
+python run.py
 ```
 
 ### Build tips
