@@ -23,12 +23,14 @@
 ---
 
 # FastXC Ultra
-**面向单/双阵列（1 & 9 分量）环境噪声互相关的高性能 CPU‑GPU 流水线**  
+**面向单/双阵列（1 & 9 分量 背景噪声互相关的高性能 CPU‑GPU 计算框架**  
 
-FastXC Ultra 以 **Python 控制器** 协调 **CUDA‑C 内核**，将原始 SAC 波形在几分钟内堆叠成噪声互相关函数（NCF）——昔日的“数小时”现在只需“数分钟”。
+**切换语言** **Switch Language**: [English](README.md)[英语], [简体中文](README.zh-CN.md)[Simplified Chinese]
 
-> **注意**：GPU 叠加（PWS / tf‑PWS）仍需 **≥ 20 GB 显存/卡**。  
-> 显存更小的显卡可使用线性叠加或更短窗口。
+FastXC Ultra 以 **Python 控制器** 协调 **CUDA‑C 内核**，将原始 SAC 波形在几分钟内堆叠成噪声互相关函数（NCF）—— 计算成本是纯CPU框架的 1/50 。
+
+> **注意**：GPU 叠加（PWS / tf‑PWS）仍需 **≥ 20 GB 显存/卡** （建议）。  
+> 显存更小的显卡可使用线性叠加或更短的max_lag (互相关保留时长)。
 
 ---
 
