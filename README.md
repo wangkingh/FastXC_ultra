@@ -18,8 +18,9 @@
   <img src="https://img.shields.io/badge/CUDA-11.8%2B-green?logo=nvidia" alt="CUDA >=11.8">
 </p>
 
-<!-- Switch language / 切换语言: [简体中文](README.zh-CN.md) -->
 
+<!-- Switch language / 切换语言: [简体中文](README.zh-CN.md) -->
+* Switch Language 切换语言: [English](README.md)[英文], [简体中文](README.zh-CN.md)[Simplified Chinese]
 ---
 
 # FastXC Ultra
